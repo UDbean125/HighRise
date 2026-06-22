@@ -1,0 +1,69 @@
+# XcodeGen spec for HighRise.
+#
+# This Linux container has no Xcode, so the .xcodeproj is generated on a Mac
+# rather than hand-committed (a hand-written pbxproj that can't be opened to
+# verify is worse than none). On a Mac:
+#
+#     brew install xcodegen
+#     cd HighRise
+#     xcodegen generate
+#     open HighRise.xcodeproj
+#
+# XcodeGen is a build-time project generator, not an app dependency — the
+# shipped app still links only Apple frameworks (zero third-party runtime deps).
+
+name: HighRise
+options:
+  bundleIdPrefix: com.bryansnotes
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    # Set your signing team here (or in Xcode) to run a signed build.
+    DEVELOPMENT_TEAM: ""
+
+targets:
+  HighRise:
+    type: application
+    platform: macOS
+    sources:
+      - path: HighRise
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bryansnotes.highrise
+        PRODUCT_NAME: HighRise
+        INFOPLIST_FILE: HighRise/Info.plist
+        CODE_SIGN_ENTITLEMENTS: HighRise/HighRise.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+        ENABLE_HARDENED_RUNTIME: YES
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
+
+  HighRiseTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: HighRiseTests
+    dependencies:
+      - target: HighRise
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bryansnotes.highriseTests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  HighRise:
+    build:
+      targets:
+        HighRise: all
+        HighRiseTests: [test]
+    test:
+      targets:
+        - HighRiseTests

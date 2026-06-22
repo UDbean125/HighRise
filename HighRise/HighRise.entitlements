@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      HighRise runs UNSANDBOXED. Two capabilities the App Sandbox forbids are
+      core to the app:
+        1. Driving Mail/Outlook via Apple Events (cross-app automation).
+        2. Spawning /usr/bin/unzip to read .xlsx / .docx (Office files are zips).
+      It is therefore intended for direct distribution (Developer ID + notarize),
+      not the Mac App Store. The automation entitlement below is still required
+      under the Hardened Runtime.
+    -->
+    <key>com.apple.security.app-sandbox</key>
+    <false/>
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+</dict>
+</plist>
