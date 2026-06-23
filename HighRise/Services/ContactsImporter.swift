@@ -14,15 +14,30 @@ enum ContactsImporter {
 
         var errorDescription: String? {
             switch self {
-            case .accessDenied:     return "HighRise doesn't have permission to read your Contacts. Grant access in System Settings ▸ Privacy & Security ▸ Contacts."
-            case .fetchFailed(let m): return "Couldn't read Contacts: \(m)"
-            case .noneWithEmail:    return "None of your contacts have an email address."
+            case .accessDenied:
+                return "HighRise doesn't have permission to read your Contacts. Open System Settings ▸ Privacy & Security ▸ Contacts and turn on HighRise, then try again."
+            case .fetchFailed(let m):
+                return "Couldn't read Contacts: \(m)"
+            case .noneWithEmail:
+                return "None of your contacts have an email address."
             }
         }
     }
 
+    /// Pure decision: does this authorization status mean access is *denied*
+    /// (as opposed to granted or merely not-yet-decided)? Kept separate so the
+    /// mapping is unit-tested without a live `CNContactStore`. `.notDetermined`
+    /// is not a denial — it means we should prompt. Unknown/newer cases (e.g.
+    /// `.limited`) are treated as readable rather than blocked.
+    static func isDenied(_ status: CNAuthorizationStatus) -> Bool {
+        switch status {
+        case .denied, .restricted: return true
+        default: return false
+        }
+    }
+
     static func fetchTable() async throws -> RecipientTable {
-        try await requestAccess()
+        try await ensureAccess()
 
         let store = CNContactStore()
         let keys: [CNKeyDescriptor] = [
@@ -47,6 +62,14 @@ enum ContactsImporter {
                 }
             }
         } catch {
+            // A fetch can fail because TCC revoked access mid-flight, which
+            // surfaces as a generic error (e.g. "Access Denied"). If we're no
+            // longer authorized, show the actionable Settings guidance instead
+            // of the raw message.
+            if isDenied(CNContactStore.authorizationStatus(for: .contacts)) {
+                throw ContactsError.accessDenied
+            }
+            Log.csv.error("Contacts fetch failed: \(error.localizedDescription, privacy: .public)")
             throw ContactsError.fetchFailed(error.localizedDescription)
         }
 
@@ -55,26 +78,29 @@ enum ContactsImporter {
         return RecipientTable(headers: ["Name", "Company", "Email"], rows: rows)
     }
 
-    /// Bridges the callback-based authorization API to async/await.
-    private static func requestAccess() async throws {
+    /// Ensures the app is authorized, prompting once if the user hasn't decided.
+    /// Throws `.accessDenied` (with Settings guidance) for any denial.
+    private static func ensureAccess() async throws {
         let status = CNContactStore.authorizationStatus(for: .contacts)
-        switch status {
-        case .authorized:
-            return
-        case .denied, .restricted:
-            throw ContactsError.accessDenied
-        default:
-            break // .notDetermined → prompt below
-        }
+        if status == .authorized { return }
+        if isDenied(status) { throw ContactsError.accessDenied }
 
-        let granted: Bool = try await withCheckedThrowingContinuation { continuation in
-            CNContactStore().requestAccess(for: .contacts) { granted, error in
-                if let error {
-                    continuation.resume(throwing: ContactsError.fetchFailed(error.localizedDescription))
-                } else {
-                    continuation.resume(returning: granted)
+        // .notDetermined → prompt. A thrown error here (or a false grant) is
+        // reported as a denial, since the practical fix is the same: enable it.
+        let granted: Bool
+        do {
+            granted = try await withCheckedThrowingContinuation { continuation in
+                CNContactStore().requestAccess(for: .contacts) { granted, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume(returning: granted)
+                    }
                 }
             }
+        } catch {
+            Log.csv.error("Contacts access request failed: \(error.localizedDescription, privacy: .public)")
+            throw ContactsError.accessDenied
         }
         guard granted else { throw ContactsError.accessDenied }
     }
