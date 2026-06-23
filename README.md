@@ -59,6 +59,23 @@ xcodebuild test -scheme HighRise -destination 'platform=macOS'
 > without Xcode, so it has **not yet been compiled**. Generate the project and
 > run a build/test pass on a Mac before relying on it.
 
+## Trying the pipeline without a build
+
+You don't need to launch the app (or Mail) to see the merge work. `Tools/dry-run.sh`
+compiles the real, Foundation-only core and prints the AppleScript that *would*
+be sent for each recipient — and why blocked rows are held back. Nothing is sent:
+
+```sh
+./Tools/dry-run.sh                         # uses Examples/sample-recipients.csv
+./Tools/dry-run.sh path/to/your-list.csv   # or your own list
+```
+
+The bundled `Examples/sample-recipients.csv` deliberately includes the tricky
+cases (a quoted comma, embedded `""` quotes, HTML-special characters, a row
+missing a referenced field, and an invalid address) so you can watch the
+escaping and the send-blocking behave. To actually exercise Mail, pipe one of
+the printed scripts to `osascript` — it'll create a real draft.
+
 ## Releasing (Developer ID + notarization)
 
 Distribution outside the Mac App Store needs a Developer ID-signed, notarized,
