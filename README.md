@@ -59,6 +59,52 @@ xcodebuild test -scheme HighRise -destination 'platform=macOS'
 > without Xcode, so it has **not yet been compiled**. Generate the project and
 > run a build/test pass on a Mac before relying on it.
 
+## Trying the pipeline without a build
+
+You don't need to launch the app (or Mail) to see the merge work. `Tools/dry-run.sh`
+compiles the real, Foundation-only core and prints the AppleScript that *would*
+be sent for each recipient — and why blocked rows are held back. Nothing is sent:
+
+```sh
+./Tools/dry-run.sh                         # uses Examples/sample-recipients.csv
+./Tools/dry-run.sh path/to/your-list.csv   # or your own list
+```
+
+The bundled `Examples/sample-recipients.csv` deliberately includes the tricky
+cases (a quoted comma, embedded `""` quotes, HTML-special characters, a row
+missing a referenced field, and an invalid address) so you can watch the
+escaping and the send-blocking behave. To actually exercise Mail, pipe one of
+the printed scripts to `osascript` — it'll create a real draft.
+
+## App icons
+
+`Icons/make-icons.sh` turns master artwork into app icons for macOS, iOS/iPadOS,
+and Windows in one command (run on a Mac). See `Icons/README.md` for the framing
+rules per platform and how to wire the macOS icon into the build.
+
+## Releasing (Developer ID + notarization)
+
+Distribution outside the Mac App Store needs a Developer ID-signed, notarized,
+stapled build. `.github/workflows/release.yml` does this on a macOS runner:
+
+- **Push a tag** like `v1.2.0` → it archives, signs, notarizes via `notarytool`,
+  staples, verifies with `spctl`, and attaches the `.zip` to a GitHub Release
+  (the version is taken from the tag).
+- **Run it manually** (workflow_dispatch) → same build, uploaded as a run
+  artifact instead of a release.
+
+It expects these repository secrets: `BUILD_CERTIFICATE_BASE64` + `P12_PASSWORD`
+(the Developer ID Application cert as a base64 `.p12`), `KEYCHAIN_PASSWORD`,
+`DEVELOPMENT_TEAM`, and an App Store Connect API key for notarization
+(`AC_API_KEY_BASE64`, `AC_API_KEY_ID`, `AC_API_ISSUER_ID`). To sign/notarize
+locally instead, archive with `CODE_SIGN_IDENTITY="Developer ID Application"`
+and `--options=runtime`, then `xcrun notarytool submit … --wait` and
+`xcrun stapler staple`.
+
+> First launch on any Mac still shows the one-time **Automation** (and, for
+> address-book import, **Contacts**) consent prompts — notarization doesn't
+> remove those, by design.
+
 ## Permissions & sandboxing
 
 HighRise runs **unsandboxed** and is meant for direct distribution

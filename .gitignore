@@ -1,6 +1,10 @@
 # Generated Xcode project (regenerate with `xcodegen generate`)
 *.xcodeproj
 
+# Master icon artwork (large source files kept on the user's drive, not in git;
+# this folder lives inside the working copy on that Mac).
+HighRise iCons/
+
 # Xcode / build artifacts
 build/
 DerivedData/

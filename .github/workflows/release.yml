@@ -1,0 +1,198 @@
+name: Release
+
+# Builds a Developer ID-signed, notarized, stapled HighRise.app and publishes it.
+#
+# This is the distribution counterpart to ci.yml (which only builds + tests with
+# signing disabled). It runs on a macOS runner because it needs Xcode, the Apple
+# SDKs, codesign, and notarytool.
+#
+# Triggers:
+#   * pushing a tag like v1.2.0  -> builds and attaches the zip to a GitHub Release
+#   * manual "Run workflow"      -> builds and uploads the zip as a run artifact
+#
+# ---------------------------------------------------------------------------
+# Required repository secrets
+# ---------------------------------------------------------------------------
+# Signing (Developer ID Application certificate exported as a .p12):
+#   BUILD_CERTIFICATE_BASE64  base64 of the Developer ID Application .p12
+#                             (`base64 -i cert.p12 | pbcopy`)
+#   P12_PASSWORD              password protecting that .p12
+#   KEYCHAIN_PASSWORD         any string; used for the throwaway CI keychain
+#   DEVELOPMENT_TEAM          your 10-char Apple Team ID
+#
+# Notarization (App Store Connect API key — preferred over an Apple ID password
+# because it carries no 2FA and is scoped to the Developer ID role):
+#   AC_API_KEY_BASE64         base64 of the AuthKey_XXXXXX.p8 file
+#   AC_API_KEY_ID             the key's Key ID
+#   AC_API_ISSUER_ID          the App Store Connect issuer UUID
+# ---------------------------------------------------------------------------
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create the GitHub Release on tag pushes
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Sign, notarize & publish
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      # Pre-staged for the Icon Composer .icon (which needs Xcode 26+ to compile).
+      # Guarded so it never fails the job before a .icon exists on the runner.
+      # Matches 26 through 29 (devs are already on macOS 27 / Xcode 27).
+      - name: Select Xcode 26+ if available
+        run: |
+          XC=$(ls -d /Applications/Xcode_2[6-9]*.app 2>/dev/null | sort -V | tail -1 || true)
+          if [ -n "$XC" ]; then
+            echo "Selecting $XC"
+            sudo xcode-select -s "$XC/Contents/Developer"
+          else
+            echo "Xcode 26+ not on this runner; using default. (Needed once HighRise.icon is added.)"
+          fi
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      # Derive a marketing version from the tag (v1.2.0 -> 1.2.0). On manual
+      # runs there's no tag, so fall back to the value baked into project.yml.
+      - name: Resolve version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "marketing=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "marketing=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Import Developer ID certificate
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+
+          echo "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o "$CERT_PATH"
+
+          # Create an isolated, short-lived keychain so we never touch the
+          # runner's login keychain and nothing leaks between jobs.
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security import "$CERT_PATH" -P "$P12_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          # Let codesign use the key non-interactively.
+          security set-key-partition-list -S apple-tool:,apple: \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
+
+      - name: Write ExportOptions.plist
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>developer-id</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>teamID</key><string>${{ secrets.DEVELOPMENT_TEAM }}</string>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Archive (Release, Developer ID, Hardened Runtime)
+        run: |
+          set -euo pipefail
+          VERSION_FLAG=()
+          if [[ -n "${{ steps.version.outputs.marketing }}" ]]; then
+            VERSION_FLAG=(MARKETING_VERSION="${{ steps.version.outputs.marketing }}")
+          fi
+          xcodebuild archive \
+            -scheme HighRise \
+            -configuration Release \
+            -destination 'generic/platform=macOS' \
+            -archivePath "$RUNNER_TEMP/HighRise.xcarchive" \
+            DEVELOPMENT_TEAM="${{ secrets.DEVELOPMENT_TEAM }}" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            OTHER_CODE_SIGN_FLAGS="--timestamp --options=runtime" \
+            "${VERSION_FLAG[@]}"
+
+      - name: Export signed app
+        run: |
+          set -euo pipefail
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/HighRise.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+
+      - name: Notarize & staple
+        env:
+          AC_API_KEY_BASE64: ${{ secrets.AC_API_KEY_BASE64 }}
+          AC_API_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
+          AC_API_ISSUER_ID: ${{ secrets.AC_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/export/HighRise.app"
+          KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          echo "$AC_API_KEY_BASE64" | base64 --decode -o "$KEY_PATH"
+
+          # notarytool needs a zip (or dmg/pkg); submit and block until Apple
+          # returns Accepted/Invalid so a rejection fails the job.
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/submit.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/submit.zip" \
+            --key "$KEY_PATH" \
+            --key-id "$AC_API_KEY_ID" \
+            --issuer "$AC_API_ISSUER_ID" \
+            --wait
+
+          # Staple the ticket so the app validates offline, then verify the
+          # whole chain the way Gatekeeper will on a user's Mac.
+          xcrun stapler staple "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          spctl --assess --type execute --verbose=4 "$APP"
+
+      - name: Package notarized app
+        id: package
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/export/HighRise.app"
+          NAME="HighRise${{ steps.version.outputs.marketing && format('-{0}', steps.version.outputs.marketing) || '' }}.zip"
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/$NAME"
+          echo "zip=$RUNNER_TEMP/$NAME" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: ${{ steps.package.outputs.zip }}
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" "${{ steps.package.outputs.zip }}" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes
