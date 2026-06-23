@@ -13,4 +13,8 @@
     <ProjectReference Include="..\HighRise.Core\HighRise.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="HighRise.Mail.Tests" />
+  </ItemGroup>
+
 </Project>
