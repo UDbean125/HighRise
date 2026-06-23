@@ -41,11 +41,11 @@ public sealed class EmailTemplate
         {
             var seen = new HashSet<string>();
             var ordered = new List<string>();
-            foreach (var field in PlaceholderNames(Subject).Concat(PlaceholderNames(Body)))
+            foreach (var name in PlaceholderNames(Subject).Concat(PlaceholderNames(Body)))
             {
-                var key = field.ToLowerInvariant();
+                var key = name.ToLowerInvariant();
                 if (seen.Add(key))
-                    ordered.Add(field);
+                    ordered.Add(name);
             }
             return ordered;
         }
