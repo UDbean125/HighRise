@@ -76,6 +76,12 @@ missing a referenced field, and an invalid address) so you can watch the
 escaping and the send-blocking behave. To actually exercise Mail, pipe one of
 the printed scripts to `osascript` — it'll create a real draft.
 
+## App icons
+
+`Icons/make-icons.sh` turns master artwork into app icons for macOS, iOS/iPadOS,
+and Windows in one command (run on a Mac). See `Icons/README.md` for the framing
+rules per platform and how to wire the macOS icon into the build.
+
 ## Releasing (Developer ID + notarization)
 
 Distribution outside the Mac App Store needs a Developer ID-signed, notarized,
