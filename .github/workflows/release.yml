@@ -48,16 +48,17 @@ jobs:
       - name: Check out
         uses: actions/checkout@v4
 
-      # Pre-staged for the Icon Composer .icon (which needs Xcode 26 to compile).
+      # Pre-staged for the Icon Composer .icon (which needs Xcode 26+ to compile).
       # Guarded so it never fails the job before a .icon exists on the runner.
-      - name: Select Xcode 26 if available
+      # Matches 26 through 29 (devs are already on macOS 27 / Xcode 27).
+      - name: Select Xcode 26+ if available
         run: |
-          XC=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)
+          XC=$(ls -d /Applications/Xcode_2[6-9]*.app 2>/dev/null | sort -V | tail -1 || true)
           if [ -n "$XC" ]; then
             echo "Selecting $XC"
             sudo xcode-select -s "$XC/Contents/Developer"
           else
-            echo "Xcode 26 not on this runner; using default. (Needed once HighRise.icon is added.)"
+            echo "Xcode 26+ not on this runner; using default. (Needed once HighRise.icon is added.)"
           fi
           xcodebuild -version
 
