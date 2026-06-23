@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="HighRise.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid RowDefinitions="Auto,*" Padding="24" RowSpacing="12">
+        <StackPanel Grid.Row="0" Spacing="4">
+            <TextBlock Text="HighRise" Style="{StaticResource TitleLargeTextBlockStyle}" />
+            <TextBlock
+                Text="Connect · Merge · Grow"
+                Style="{StaticResource BodyTextBlockStyle}"
+                Opacity="0.7" />
+        </StackPanel>
+
+        <Border
+            Grid.Row="1"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Padding="24">
+            <TextBlock
+                VerticalAlignment="Center"
+                HorizontalAlignment="Center"
+                TextWrapping="Wrap"
+                TextAlignment="Center"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="Mail merge for Windows — Compose, Import, Review, and Send via Gmail or Outlook. UI coming online next." />
+        </Border>
+    </Grid>
+</Window>
