@@ -29,17 +29,19 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
-      # Run from windows/ so windows/global.json pins the .NET 8 SDK. WinUI 3 +
-      # Windows App SDK 1.6 needs SDK 8's MSBuild PRI tooling; the runner's
-      # default SDK 10 lacks the expected task assembly (MSB4062).
-      - name: Show SDK
-        working-directory: windows
-        run: dotnet --version
+      # WinUI 3's PRI/Appx MSBuild tasks (Microsoft.Build.Packaging.Pri.Tasks.dll)
+      # ship with Visual Studio's MSBuild, not the .NET SDK — so `dotnet build`
+      # can't find them (MSB4062). Build with VS MSBuild instead. windows/global.json
+      # pins the .NET 8 SDK that MSBuild uses for the project.
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
 
-      - name: Restore
+      - name: Show versions
         working-directory: windows
-        run: dotnet restore src/HighRise.App/HighRise.App.csproj -p:Platform=x64
+        run: |
+          dotnet --version
+          msbuild -version
 
-      - name: Build
+      - name: Restore & build (VS MSBuild)
         working-directory: windows
-        run: dotnet build src/HighRise.App/HighRise.App.csproj -c Release -p:Platform=x64 --no-restore
+        run: msbuild src/HighRise.App/HighRise.App.csproj /restore /p:Configuration=Release /p:Platform=x64
