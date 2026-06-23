@@ -28,5 +28,8 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
-      - name: Test (restores + builds Core via project reference)
+      - name: Test HighRise.Core
         run: dotnet test windows/tests/HighRise.Core.Tests/HighRise.Core.Tests.csproj -c Release
+
+      - name: Test HighRise.Mail
+        run: dotnet test windows/tests/HighRise.Mail.Tests/HighRise.Mail.Tests.csproj -c Release

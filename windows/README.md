@@ -28,13 +28,16 @@ behaviour matches across platforms.
 ## Roadmap
 
 - [x] **`HighRise.Core`** — CSV parse, `{{Field}}` merge, HTML escaping, email
-      validation, send-gating (this folder).
-- [ ] **`HighRise.Mail`** — Gmail API + Microsoft Graph senders over OAuth
-      (per-recipient draft/send), plus an `.xlsx` reader.
+      validation, send-gating.
+- [x] **`HighRise.Mail`** — Gmail API + Microsoft Graph senders over OAuth
+      (per-recipient draft/send), MIME building with header-injection guarding.
+      Token acquisition is abstracted (`IAccessTokenProvider`) so the library is
+      dependency-light and CI-verifiable; the WinUI app wires MSAL / Google OAuth.
+- [ ] **`HighRise.Mail`** — `.xlsx` reader (next).
 - [ ] **`HighRise.App`** (WinUI 3) — Compose → Import → Review → Send UI.
 
-The first item is complete and CI-verified. The latter two require the Windows
-App SDK / WinUI and are built on Windows.
+`Core` and `Mail` are CI-verified on Ubuntu. The WinUI app requires the Windows
+App SDK and is built on Windows.
 
 ## Build & test (any OS)
 
