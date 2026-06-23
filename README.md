@@ -59,6 +59,29 @@ xcodebuild test -scheme HighRise -destination 'platform=macOS'
 > without Xcode, so it has **not yet been compiled**. Generate the project and
 > run a build/test pass on a Mac before relying on it.
 
+## Releasing (Developer ID + notarization)
+
+Distribution outside the Mac App Store needs a Developer ID-signed, notarized,
+stapled build. `.github/workflows/release.yml` does this on a macOS runner:
+
+- **Push a tag** like `v1.2.0` → it archives, signs, notarizes via `notarytool`,
+  staples, verifies with `spctl`, and attaches the `.zip` to a GitHub Release
+  (the version is taken from the tag).
+- **Run it manually** (workflow_dispatch) → same build, uploaded as a run
+  artifact instead of a release.
+
+It expects these repository secrets: `BUILD_CERTIFICATE_BASE64` + `P12_PASSWORD`
+(the Developer ID Application cert as a base64 `.p12`), `KEYCHAIN_PASSWORD`,
+`DEVELOPMENT_TEAM`, and an App Store Connect API key for notarization
+(`AC_API_KEY_BASE64`, `AC_API_KEY_ID`, `AC_API_ISSUER_ID`). To sign/notarize
+locally instead, archive with `CODE_SIGN_IDENTITY="Developer ID Application"`
+and `--options=runtime`, then `xcrun notarytool submit … --wait` and
+`xcrun stapler staple`.
+
+> First launch on any Mac still shows the one-time **Automation** (and, for
+> address-book import, **Contacts**) consent prompts — notarization doesn't
+> remove those, by design.
+
 ## Permissions & sandboxing
 
 HighRise runs **unsandboxed** and is meant for direct distribution
