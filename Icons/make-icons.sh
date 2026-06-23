@@ -32,13 +32,14 @@ set -euo pipefail
 cd "$(dirname "$0")"               # -> Icons/
 ROOT="$(pwd)"
 
-MAC_SRC="" IOS_SRC="" WIN_SRC="" CROP="center"
+MAC_SRC="" IOS_SRC="" WIN_SRC="" CROP="center" INSTALL=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --macos) MAC_SRC="$2"; shift 2 ;;
-    --ios)   IOS_SRC="$2"; shift 2 ;;
-    --win)   WIN_SRC="$2"; shift 2 ;;
-    --crop)  CROP="$2";    shift 2 ;;
+    --macos)   MAC_SRC="$2"; shift 2 ;;
+    --ios)     IOS_SRC="$2"; shift 2 ;;
+    --win)     WIN_SRC="$2"; shift 2 ;;
+    --crop)    CROP="$2";    shift 2 ;;
+    --install) INSTALL=1;    shift ;;   # also copy macOS set into the app catalog
     -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -131,13 +132,23 @@ else
   echo "  (skipped: install ImageMagick — 'brew install imagemagick' — for .ico)" >&2
 fi
 
+if [[ "$INSTALL" -eq 1 ]]; then
+  DEST="$ROOT/../HighRise/Assets.xcassets/AppIcon.appiconset"
+  echo "install → HighRise/Assets.xcassets/AppIcon.appiconset"
+  mkdir -p "$DEST"
+  cp "$MAC_SET"/icon_*.png "$DEST/"
+  cp "$ROOT/AppIcon-macOS.appiconset/Contents.json" "$DEST/Contents.json"
+fi
+
 cat <<DONE
 
 Done. Generated:
   Icons/AppIcon-macOS.appiconset/   (10 PNGs + Contents.json)
   Icons/AppIcon-iOS.appiconset/     (1024 PNG + Contents.json)
-  Icons/windows/HighRise.ico        (if ImageMagick was available)
+  Icons/windows/HighRise.ico        (if ImageMagick was available)$( [[ "$INSTALL" -eq 1 ]] && printf '\n  HighRise/Assets.xcassets/AppIcon.appiconset  (installed)' )
 
 If the crop clipped the skyline, re-run with --crop left|right|center.
-Next: wire the macOS icon into the app — see Icons/README.md (§ "Wiring macOS").
+The macOS icon is already wired (project.yml + Info.plist). With --install the
+PNGs are in place — just commit them and run xcodegen generate.
+Without --install, see Icons/README.md (§ "Wiring macOS").
 DONE

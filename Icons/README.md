@@ -54,40 +54,34 @@ Icons/windows/HighRise.ico        16/24/32/48/64/128/256 px
 The two `.appiconset` folders are real Xcode asset catalogs — drop them straight
 into a target.
 
-## 3. Wiring macOS  (so the app running now gets its icon)
+## 3. Wiring macOS  (already done)
 
-The generated set lives under `Icons/` so it never breaks CI before the PNGs
-exist. Once generated, move it into the app and wire two settings:
+The macOS icon is **already wired** into the build:
+
+* `project.yml` sets `ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon`
+* `HighRise/Info.plist` sets `CFBundleIconName = AppIcon`
+* `HighRise/Assets.xcassets/AppIcon.appiconset/` exists with declared slots but
+  no images yet (so `actool` only warns — it never fails CI before the PNGs
+  exist).
+
+All that's left is to drop the generated PNGs into that catalog. The easiest way
+is to pass `--install`, which copies the macOS set straight in:
 
 ```sh
-mkdir -p HighRise/Assets.xcassets
-cp -R Icons/AppIcon-macOS.appiconset HighRise/Assets.xcassets/AppIcon.appiconset
+./Icons/make-icons.sh --macos "$ICONS/HighRise App iCon 1280x768.jpg" --install
 ```
 
-Add an `Assets.xcassets` catalog root if you don't have one:
+Then commit the PNGs and regenerate the project:
 
 ```sh
-cat > HighRise/Assets.xcassets/Contents.json <<'JSON'
-{ "info" : { "author" : "xcode", "version" : 1 } }
-JSON
+git add HighRise/Assets.xcassets/AppIcon.appiconset
+xcodegen generate     # run from the repo root, matching ci.yml
 ```
 
-Then in `project.yml`, under `targets: HighRise: settings: base:` add:
-
-```yaml
-        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-```
-
-and in `HighRise/Info.plist` add:
-
-```xml
-    <key>CFBundleIconName</key>
-    <string>AppIcon</string>
-```
-
-Finally `cd HighRise && xcodegen generate` and build. XcodeGen auto-includes the
-`.xcassets` (it's under the `HighRise` sources path), so no other change is
-needed.
+(Without `--install`, copy `Icons/AppIcon-macOS.appiconset/*` into
+`HighRise/Assets.xcassets/AppIcon.appiconset/` by hand.) XcodeGen auto-includes
+the `.xcassets` because it's under the `HighRise` sources path, so no further
+project change is needed.
 
 ## 4. Wiring iOS / iPadOS and Windows
 
