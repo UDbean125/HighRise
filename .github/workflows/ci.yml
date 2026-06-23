@@ -21,6 +21,20 @@ jobs:
       - name: Check out
         uses: actions/checkout@v4
 
+      # Pre-staged for the Icon Composer .icon (which needs Xcode 26 to compile).
+      # Guarded: selects Xcode 26 only if the runner has it, otherwise keeps the
+      # default toolchain — so this never fails CI before the .icon is added.
+      - name: Select Xcode 26 if available
+        run: |
+          XC=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)
+          if [ -n "$XC" ]; then
+            echo "Selecting $XC"
+            sudo xcode-select -s "$XC/Contents/Developer"
+          else
+            echo "Xcode 26 not on this runner; using default. (Needed once HighRise.icon is added.)"
+          fi
+          xcodebuild -version
+
       - name: Install XcodeGen
         run: brew install xcodegen
 
