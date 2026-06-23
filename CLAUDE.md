@@ -41,14 +41,16 @@ so it can't break CI before the artwork exists.
    `Icons/AppIcon-macOS.appiconset` → `HighRise/Assets.xcassets/AppIcon.appiconset`,
    add `ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon` to `project.yml` and
    `CFBundleIconName = AppIcon` to `Info.plist`, then `xcodegen generate`.
-5. **Liquid Glass**: the static `.appiconset` bakes the glass look into PNGs
-   (macOS 14+). Dynamic Liquid Glass = Apple **Icon Composer** `.icon`. Verified:
-   the `.icon` is **backward compatible** (actool emits a layered asset for
-   macOS 26 + an `.icns` fallback for older), so it does NOT require raising the
-   deployment target — but it DOES require Xcode 26 to *build* (incl. CI runner)
-   and high-res layered source art. Icon Composer is a Mac GUI app (can't run
-   from Linux/CI). Upgrade path + exact wiring documented in `Icons/README.md`.
-   Current source art is only ~265px — too small for a usable `.icon`.
+5. **Liquid Glass**: a real `Icons/HighRise.icon` (Icon Composer) exists and
+   **builds clean on Xcode 27** locally. It's **staged out of the build**: the
+   hosted CI/release runners only have **Xcode 26.3**, whose `actool` *crashes*
+   compiling a 27-authored `.icon`. So the shipping icon is the static
+   `AppIcon.appiconset` (same 2048px master) — keeps all pipelines green. Flip
+   to the `.icon` (move into `HighRise/`, retire the catalog, point
+   `ASSETCATALOG_COMPILER_APPICON_NAME`/`CFBundleIconName` at `HighRise`) once
+   GitHub runners ship Xcode 27 GA, or for a local-only Xcode 27 build. The CI
+   `Select Xcode 26+` guard already prefers the newest 26–29 on the runner.
+   Exact flip steps in `Icons/README.md`.
 
 ## Other repeatable workflows
 - **No-Mail dry run**: `./Tools/dry-run.sh [list.csv]` compiles the real

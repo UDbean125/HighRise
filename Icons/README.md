@@ -92,36 +92,37 @@ project change is needed.
 * **Windows** — use `Icons/windows/HighRise.ico` as the executable/installer
   icon (e.g. in your `.rc` file or packaging config for the Windows build).
 
-## Liquid Glass via Icon Composer (upgrade path)
+## Liquid Glass via Icon Composer (staged — `Icons/HighRise.icon`)
 
-The current `.appiconset` bakes the glass look into static PNGs that work on
-macOS 14+. To adopt Apple's *dynamic* Liquid Glass you author a single
-`HighRise.icon` in **Icon Composer** (ships with Xcode 26). Good news verified
-against Apple's docs: the `.icon` is **backward compatible** — `actool` emits
-both a layered asset for macOS 26 / iOS 26 *and* a fallback `.icns` for older
-systems, so you do **not** have to raise the deployment target; macOS 14–25
-users just get the static icon.
+The dynamic Liquid Glass icon already exists: **`Icons/HighRise.icon`**, authored
+in Icon Composer and **verified to build clean on Xcode 27** (`** BUILD
+SUCCEEDED **` locally). It's `.icon` is **backward compatible** — `actool` emits
+both a layered macOS 26/27 asset *and* an `.icns` fallback for older systems, so
+no deployment-target change is needed.
 
-What it takes:
+It is **staged out of the build on purpose.** The blocker is the *build
+toolchain version*, not the icon: GitHub's hosted runners currently top out at
+**Xcode 26.3**, whose `actool` **crashes** compiling a 27-authored `.icon`
+(`CompileAssetCatalogVariant … ibtoold … objc_exception_throw`). That would
+break both `ci.yml` and `release.yml`. So the shipping icon stays the static
+`AppIcon.appiconset` (also generated from the same 2048px master), keeping every
+pipeline green with a crisp icon.
 
-1. **High-resolution, layered source art** (≥1024px, ideally separate
-   foreground/background with transparency). The 265px JPEGs in `HighRise iCons`
-   are far too small — re-export the skyline from the original design first.
-2. **Author** `HighRise.icon` in Icon Composer on a Mac (it's a GUI app; can't
-   be scripted in CI or from Linux).
-3. **Add** `HighRise.icon` to the repo (e.g. `HighRise/HighRise.icon`) — it sits
-   under the `HighRise` sources path so XcodeGen includes it.
-4. **Switch the icon name**: in `project.yml` change
-   `ASSETCATALOG_COMPILER_APPICON_NAME` from `AppIcon` to `HighRise` (the
-   `.icon` file's name without extension), and remove `CFBundleIconName` /
-   `AppIcon.appiconset` once the `.icon` is the source of truth.
-5. **Build toolchain**: compiling a `.icon` requires **Xcode 26**. Update
-   `.github/workflows/ci.yml` (and `release.yml`) to select Xcode 26 on the
-   runner (e.g. `sudo xcode-select -s /Applications/Xcode_26.app`) or the build
-   will fail even though the deployment target is unchanged.
+**Flip to Liquid Glass** once GitHub runners ship Xcode 27 GA (~fall 2026) — or
+anytime for a *local* Xcode 27 build (CI would then go red until the runners
+catch up):
 
-Until all of that is in place, the static `.appiconset` remains the wired icon
-so the app (and CI) keep working.
+```sh
+git mv Icons/HighRise.icon HighRise/HighRise.icon      # into the built sources
+git rm -r HighRise/Assets.xcassets                     # retire the static set
+# project.yml: ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon -> HighRise
+# Info.plist:  CFBundleIconName            AppIcon -> HighRise
+xcodegen generate
+```
+
+`actool` then produces the layered glass asset + the `.icns` fallback. The CI
+`Select Xcode 26+` step already prefers the newest Xcode 26–29 on the runner, so
+it'll use a 27 automatically when one is available.
 
 Sources: <https://useyourloaf.com/blog/adding-icon-composer-icons-to-xcode/>,
 <https://developer.apple.com/documentation/Xcode/creating-your-app-icon-using-icon-composer>
