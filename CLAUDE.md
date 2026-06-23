@@ -19,11 +19,17 @@ so it can't break CI before the artwork exists.
 1. **Master artwork** lives on the user's Mac at
    `/Volumes/Satechi/HenSolutions/Apps/HighRise/HighRise iCons` (an external
    drive — not visible from the Linux container, not committed to the repo).
-2. **Generate** on the Mac:
+   The icon source is `HighRise App iCon 1280x768.jpg` (landscape skyline JPEG);
+   the two `HighRise Icon …720.jpg` files are wide logo banners, NOT icon art.
+2. **Generate** on the Mac (source is landscape + JPEG, so the script
+   square-crops it; `--crop left|right|center` picks which part to keep):
    ```sh
-   ./Icons/make-icons.sh --macos "<square-glass-icon>.png" --ios "<full-bleed-square>.png"
+   ICONS="/Volumes/Satechi/HenSolutions/Apps/HighRise/HighRise iCons"
+   ./Icons/make-icons.sh --macos "$ICONS/HighRise App iCon 1280x768.jpg"
    ```
-   `make-icons.sh` resizes via `sips` (Windows `.ico` needs ImageMagick). It
+   `make-icons.sh` resizes via `sips` (Windows `.ico` + anchored crop need
+   ImageMagick). JPEG has no alpha, so macOS gets a full square tile, not the
+   transparent-margin squircle (a PNG-with-alpha master would fix that). It
    writes:
    - `Icons/AppIcon-macOS.appiconset/` — 16–512 @1x/@2x PNGs + Contents.json
    - `Icons/AppIcon-iOS.appiconset/` — single 1024 universal (iPhone+iPad) + Contents.json

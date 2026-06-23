@@ -7,27 +7,41 @@ step that needs your artwork — the artwork itself is *not* committed here.
 ## 1. Generate
 
 Your artwork lives at
-`/Volumes/Satechi/HenSolutions/Apps/HighRise/HighRise iCons`. Point the script
-at it (filenames are whatever yours are called):
+`/Volumes/Satechi/HenSolutions/Apps/HighRise/HighRise iCons`. The icon source is
+`HighRise App iCon 1280x768.jpg` (the skyline art). It's landscape, so the
+script crops a square from it automatically:
 
 ```sh
-./Icons/make-icons.sh \
-  --macos "/Volumes/Satechi/HenSolutions/Apps/HighRise/HighRise iCons/<square-glass-icon>.png" \
-  --ios   "/Volumes/Satechi/HenSolutions/Apps/HighRise/HighRise iCons/<full-bleed-square>.png"
+ICONS="/Volumes/Satechi/HenSolutions/Apps/HighRise/HighRise iCons"
+./Icons/make-icons.sh --macos "$ICONS/HighRise App iCon 1280x768.jpg"
 ```
 
-`--ios`/`--win` are optional and fall back to the `--macos` master. For the
-Windows `.ico` you need ImageMagick once: `brew install imagemagick`.
+`--ios`/`--win` fall back to the `--macos` master, so one flag does all three
+platforms. For the Windows `.ico` you need ImageMagick once:
+`brew install imagemagick`.
+
+If the centered crop clips the skyline, choose which part to keep:
+
+```sh
+./Icons/make-icons.sh --macos "$ICONS/HighRise App iCon 1280x768.jpg" --crop left
+```
+
+(`--crop left|right|center|top|bottom`; anchors other than `center` need
+ImageMagick.)
+
+> The two `HighRise Icon …720.jpg` files are the wide **logo banners**
+> (header/marketing art), not icon sources — don't feed those to the script.
 
 **Which artwork goes where** (this matters — wrong framing looks broken):
 
-| Platform | Use | Why |
+| Platform | Wants | Note for the supplied art |
 |---|---|---|
-| **macOS** | the rounded-square **glass** icon, with its transparent margins | macOS draws it as-is; the squircle/glass look must be baked into the PNG |
-| **iOS / iPadOS** | a **full-bleed, opaque square** (no rounding, no transparency) | the OS masks the corners — a pre-rounded icon gets double-rounded |
-| **Windows** | full-bleed square (same as iOS) | shown square in taskbar/Explorer |
+| **iOS / iPadOS** | full-bleed **opaque square** | the cropped skyline JPEG is ideal; OS rounds corners |
+| **Windows** | full-bleed square | same as iOS |
+| **macOS** | rounded "squircle" with **transparent margins** | a JPEG has no alpha, so you get a full square tile, not the padded squircle. For the classic look, supply a PNG-with-alpha master later |
 
-Masters should be **1024×1024** (or larger square).
+Sources should ideally be **≥1024px** on the short side; `1280×768` crops to a
+768px square, so the largest slots are mildly upscaled (the script warns).
 
 ## 2. What it produces
 
