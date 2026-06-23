@@ -92,13 +92,36 @@ project change is needed.
 * **Windows** — use `Icons/windows/HighRise.ico` as the executable/installer
   icon (e.g. in your `.rc` file or packaging config for the Windows build).
 
-## Note on macOS "Liquid Glass"
+## Liquid Glass via Icon Composer (upgrade path)
 
-The glass treatment here is **baked into the artwork**, so it renders on every
-macOS version this app supports (deployment target is macOS 14). macOS 26
-"Tahoe" adds *dynamic* Liquid Glass icons authored in Apple's **Icon Composer**
-and shipped as a single `.icon` file — but that requires Xcode 26 and raising
-the deployment target, so it's a deliberate future upgrade rather than the
-default. If you go that route, export from Icon Composer and replace the
-`AppIcon.appiconset` reference with the `.icon`; the artwork in
-`HighRise iCons` is a good starting point for the Icon Composer layers.
+The current `.appiconset` bakes the glass look into static PNGs that work on
+macOS 14+. To adopt Apple's *dynamic* Liquid Glass you author a single
+`HighRise.icon` in **Icon Composer** (ships with Xcode 26). Good news verified
+against Apple's docs: the `.icon` is **backward compatible** — `actool` emits
+both a layered asset for macOS 26 / iOS 26 *and* a fallback `.icns` for older
+systems, so you do **not** have to raise the deployment target; macOS 14–25
+users just get the static icon.
+
+What it takes:
+
+1. **High-resolution, layered source art** (≥1024px, ideally separate
+   foreground/background with transparency). The 265px JPEGs in `HighRise iCons`
+   are far too small — re-export the skyline from the original design first.
+2. **Author** `HighRise.icon` in Icon Composer on a Mac (it's a GUI app; can't
+   be scripted in CI or from Linux).
+3. **Add** `HighRise.icon` to the repo (e.g. `HighRise/HighRise.icon`) — it sits
+   under the `HighRise` sources path so XcodeGen includes it.
+4. **Switch the icon name**: in `project.yml` change
+   `ASSETCATALOG_COMPILER_APPICON_NAME` from `AppIcon` to `HighRise` (the
+   `.icon` file's name without extension), and remove `CFBundleIconName` /
+   `AppIcon.appiconset` once the `.icon` is the source of truth.
+5. **Build toolchain**: compiling a `.icon` requires **Xcode 26**. Update
+   `.github/workflows/ci.yml` (and `release.yml`) to select Xcode 26 on the
+   runner (e.g. `sudo xcode-select -s /Applications/Xcode_26.app`) or the build
+   will fail even though the deployment target is unchanged.
+
+Until all of that is in place, the static `.appiconset` remains the wired icon
+so the app (and CI) keep working.
+
+Sources: <https://useyourloaf.com/blog/adding-icon-composer-icons-to-xcode/>,
+<https://developer.apple.com/documentation/Xcode/creating-your-app-icon-using-icon-composer>
