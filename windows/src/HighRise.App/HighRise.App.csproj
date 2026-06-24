@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>HighRise.App</RootNamespace>
+    <ApplicationDisplayName>HighRise</ApplicationDisplayName>
+    <Platforms>x86;x64;arm64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>12.0</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.*" />
+    <PackageReference Include="Google.Apis.Auth" Version="1.68.*" />
+    <PackageReference Include="Microsoft.Identity.Client" Version="4.66.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\HighRise.Core\HighRise.Core.csproj" />
+    <ProjectReference Include="..\HighRise.Mail\HighRise.Mail.csproj" />
+  </ItemGroup>
+
+</Project>
