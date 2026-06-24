@@ -17,6 +17,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.*" />
+    <PackageReference Include="Google.Apis.Auth" Version="1.68.*" />
+    <PackageReference Include="Microsoft.Identity.Client" Version="4.66.*" />
   </ItemGroup>
 
   <ItemGroup>

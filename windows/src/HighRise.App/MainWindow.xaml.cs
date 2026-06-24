@@ -7,7 +7,7 @@ namespace HighRise.App;
 public sealed partial class MainWindow : Window
 {
     private readonly HttpClient _http = new();
-    private readonly IAccessTokenProvider _tokens = new NotConfiguredTokenProvider();
+    private readonly IAccessTokenProvider _tokens = new InteractiveTokenProvider(OAuthConfig.Load());
 
     public HighRiseViewModel ViewModel { get; } = new();
 

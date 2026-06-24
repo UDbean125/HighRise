@@ -38,6 +38,33 @@ behaviour matches across platforms.
 `Core` and `Mail` are CI-verified on Ubuntu. The WinUI app requires the Windows
 App SDK and is built on Windows.
 
+## OAuth setup (to actually send)
+
+Sending uses OAuth — no passwords stored. Client IDs are read at runtime from a
+local file that is **never committed** (the repo is public):
+
+`%LOCALAPPDATA%\HighRise\oauth.json` — see `src/HighRise.App/oauth.example.json`
+for the shape:
+
+```json
+{
+  "google":    { "clientId": "…apps.googleusercontent.com", "clientSecret": "…" },
+  "microsoft": { "clientId": "…" }
+}
+```
+
+* **Gmail** — Google Cloud → enable the Gmail API → OAuth consent screen
+  (External, add yourself as a Test user) → create an **OAuth client ID** of type
+  **Desktop app** → copy the client ID + secret. Scope used: `gmail.compose`
+  (drafts + send). The loopback sign-in opens your browser on first send.
+* **Outlook** — Azure Portal → **App registrations** → new registration
+  (multitenant + personal accounts), redirect URI `http://localhost`,
+  **Allow public client flows = Yes**, delegated Graph permissions `Mail.Send` +
+  `Mail.ReadWrite`. Copy the **Application (client) ID** (no secret needed).
+
+Provide only the providers you use; an unconfigured provider fails with a clear
+message rather than sending. The `microsoft` block is optional.
+
 ## Build & test (any OS)
 
 ```sh
