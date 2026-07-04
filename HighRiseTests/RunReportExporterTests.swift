@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 @testable import HighRise
 
 /// The results report is the accountability record of a run, so its row mapping
