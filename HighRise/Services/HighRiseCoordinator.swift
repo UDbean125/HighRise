@@ -43,6 +43,16 @@ final class HighRiseCoordinator: ObservableObject {
     @Published private(set) var sendProgress: Double = 0
     @Published private(set) var outcomes: [SendOutcome] = []
 
+    /// Where a "send test to myself" goes, and the result of the last attempt,
+    /// shown inline on the Send screen.
+    @Published var testRecipient: String = ""
+    @Published private(set) var testSendResult: TestSendResult?
+
+    struct TestSendResult: Equatable {
+        let succeeded: Bool
+        let message: String
+    }
+
     private var parsedTable: RecipientTable?
     private var sendTask: Task<Void, Never>?
 
@@ -278,6 +288,52 @@ final class HighRiseCoordinator: ObservableObject {
         sendTask = nil
         isSending = false
         Log.send.info("Send cancelled by user")
+    }
+
+    /// Sends (or drafts) one fully-merged sample message to the user's own
+    /// address so they can see the real inbox render before the run. Uses the
+    /// first ready recipient as the sample and the currently selected client and
+    /// mode, with a `[TEST]` subject prefix. Complements — doesn't replace — the
+    /// per-recipient review step.
+    func sendTestToSelf() {
+        let target = testRecipient.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard EmailValidator.isValid(target) else {
+            testSendResult = TestSendResult(succeeded: false,
+                message: "Enter a valid email address to send yourself a test.")
+            return
+        }
+        guard let sample = sendablePreviews.first else {
+            testSendResult = TestSendResult(succeeded: false,
+                message: "No ready message to test yet — import a list and compose your template first.")
+            return
+        }
+        let sender = MailSender(client: selectedClient)
+        guard sender.isClientInstalled else {
+            testSendResult = TestSendResult(succeeded: false,
+                message: MailSenderError.clientNotInstalled(selectedClient).localizedDescription)
+            return
+        }
+
+        let message = ComposedMessage(
+            recipientEmail: target,
+            recipientName: "Test recipient",
+            subject: "[TEST] " + sample.resolvedSubject,
+            body: sample.resolvedBody,
+            isHTML: template.format == .html
+        )
+        do {
+            try sender.deliver(message, mode: sendMode)
+            let where_ = sendMode == .send
+                ? "Test sent to \(target)."
+                : "Test draft for \(target) created in \(selectedClient.rawValue)."
+            testSendResult = TestSendResult(succeeded: true,
+                message: "\(where_) Sampled “\(sample.contact.displayName)”.")
+            Log.send.info("Test \(self.sendMode == .send ? "send" : "draft", privacy: .public) to self succeeded")
+        } catch {
+            testSendResult = TestSendResult(succeeded: false,
+                message: "Test failed: \(error.localizedDescription)")
+            Log.send.error("Test send failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     /// Clears the contact list and results, keeping the composed template so the

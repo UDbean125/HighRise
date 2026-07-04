@@ -17,6 +17,8 @@ struct SendView: View {
                     delaySlider
                 }
                 Divider()
+                testSendRow
+                Divider()
                 actionRow
                 if !coordinator.outcomes.isEmpty {
                     resultsList
@@ -85,6 +87,33 @@ struct SendView: View {
                 .frame(maxWidth: 360)
             Text("A short gap keeps your mail client responsive and avoids tripping rate limits.")
                 .font(.callout).foregroundStyle(.secondary)
+        }
+    }
+
+    private var testSendRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Send yourself a test").font(.headline)
+            Text("Delivers one fully personalized sample — your first ready recipient — to your own address so you can check how it renders.")
+                .font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                TextField("you@example.com", text: $coordinator.testRecipient)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 280)
+                    .accessibilityLabel("Your test email address")
+                Button {
+                    coordinator.sendTestToSelf()
+                } label: {
+                    Label("Send Test", systemImage: "paperplane")
+                }
+                .disabled(coordinator.sendablePreviews.isEmpty)
+            }
+            if let result = coordinator.testSendResult {
+                Label(result.message, systemImage: result.succeeded ? "checkmark.circle" : "exclamationmark.triangle")
+                    .font(.callout)
+                    .foregroundStyle(result.succeeded ? .green : .orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
