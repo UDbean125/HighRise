@@ -297,8 +297,39 @@ final class HighRiseCoordinator: ObservableObject {
 
     /// Runs the merge-and-deliver loop over every sendable preview.
     func startSending() {
+        run(queue: sendablePreviews)
+    }
+
+    /// Re-runs only the recipients whose last attempt failed (transient errors
+    /// like a declined prompt or a briefly-unavailable client). Rows held back
+    /// for missing data aren't retried — those need corrected data re-imported.
+    func retryFailed() {
+        let failedIDs = Set(outcomes.compactMap { outcome -> UUID? in
+            if case .failed = outcome.status { return outcome.id }
+            return nil
+        })
+        let queue = previews.filter { failedIDs.contains($0.id) && $0.isSendable }
+        run(queue: queue)
+    }
+
+    /// How many of the last run's recipients failed (enables the retry action).
+    var failedCount: Int {
+        outcomes.filter { if case .failed = $0.status { return true }; return false }.count
+    }
+
+    /// A complete per-recipient results report (sent/drafted/held/failed) for
+    /// the last run, or the currently held-back rows before a run. Empty only
+    /// when there's nothing to report.
+    func resultsReportCSV() -> String {
+        RunReportExporter.csv(RunReportExporter.rows(outcomes: outcomes, blocked: blockedPreviews))
+    }
+
+    /// Whether there's anything worth exporting yet.
+    var hasResultsToExport: Bool { !outcomes.isEmpty || !blockedPreviews.isEmpty }
+
+    /// The shared merge-and-deliver loop over an explicit queue.
+    private func run(queue: [MergePreview]) {
         guard !isSending else { return }
-        let queue = sendablePreviews
         guard !queue.isEmpty else { return }
 
         let sender = MailSender(client: selectedClient)

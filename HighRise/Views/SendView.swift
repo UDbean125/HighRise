@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 /// Stage 4: choose the client and mode, then create drafts or send. Draft-first
 /// is the default — every message is built automatically (no per-email prompt),
@@ -179,6 +180,15 @@ struct SendView: View {
         }
     }
 
+    private func exportResults() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "HighRise-results.csv"
+        panel.allowedContentTypes = [.commaSeparatedText]
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        try? coordinator.resultsReportCSV().write(to: url, atomically: true, encoding: .utf8)
+    }
+
     private func addAttachments() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
@@ -272,7 +282,24 @@ struct SendView: View {
 
     private var resultsList: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Results").font(.headline)
+            HStack {
+                Text("Results").font(.headline)
+                Spacer()
+                if coordinator.failedCount > 0 && !coordinator.isSending {
+                    Button {
+                        coordinator.retryFailed()
+                    } label: {
+                        Label("Retry \(coordinator.failedCount) failed", systemImage: "arrow.clockwise")
+                    }
+                }
+                if coordinator.hasResultsToExport {
+                    Button {
+                        exportResults()
+                    } label: {
+                        Label("Export Results…", systemImage: "square.and.arrow.up")
+                    }
+                }
+            }
             ForEach(coordinator.outcomes) { outcome in
                 HStack {
                     Image(systemName: icon(for: outcome.status))
