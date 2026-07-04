@@ -141,11 +141,12 @@ struct TemplateMergeEngineTests {
         #expect(preview.resolvedBody == "<p>friend &amp; colleague</p>")
     }
 
-    @Test("The fallback may itself contain pipes — split is on the first pipe")
-    func fallbackKeepsLaterPipes() {
-        let token = EmailTemplate.token(fromRawPlaceholder: "Name|a|b")
+    @Test("Pipes separate filters; a bare first segment is the fallback")
+    func pipesSeparateFilters() {
+        let token = EmailTemplate.token(fromRawPlaceholder: "Name|there|upper")
         #expect(token.name == "Name")
-        #expect(token.fallback == "a|b")
+        #expect(token.fallback == "there")             // first bare segment → default
+        #expect(token.transforms == [.upper])          // recognized filter
     }
 
     @Test("fieldsRequiringData exempts fields whose every use has a fallback")

@@ -27,19 +27,25 @@ enum TemplateMergeEngine {
         // Subjects are always plain text, so they're never escaped.
         let substitute: (_ text: String, _ escaping: Bool) -> String = { text, escaping in
             replacePlaceholders(in: text) { token in
+                // Resolve the base value: the contact's field, else the token's
+                // fallback (from a `default:`/bare filter), else unresolved.
+                let base: String
                 if let value = contact.value(for: token.name),
                    !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    return escaping ? htmlEscape(value) : value
+                    base = value
+                } else if let fallback = token.fallback {
+                    base = fallback
+                } else {
+                    let key = token.name.lowercased()
+                    if !seenUnresolved.contains(key) {
+                        seenUnresolved.insert(key)
+                        unresolved.append(token.name)
+                    }
+                    return "" // never leak a placeholder into outgoing mail
                 }
-                if let fallback = token.fallback {
-                    return escaping ? htmlEscape(fallback) : fallback
-                }
-                let key = token.name.lowercased()
-                if !seenUnresolved.contains(key) {
-                    seenUnresolved.insert(key)
-                    unresolved.append(token.name)
-                }
-                return "" // never leak a placeholder into outgoing mail
+                // Apply formatting filters (date, currency, casing, …) in order.
+                let formatted = token.transforms.reduce(base) { MergeValueFormatter.apply($1, to: $0) }
+                return escaping ? htmlEscape(formatted) : formatted
             }
         }
 
@@ -77,11 +83,14 @@ enum TemplateMergeEngine {
     /// addresses are validated separately by the caller. Fallbacks still apply.
     static func resolvePlaceholders(in text: String, with contact: Contact) -> String {
         replacePlaceholders(in: text) { token in
+            let base: String
             if let value = contact.value(for: token.name),
                !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return value
+                base = value
+            } else {
+                base = token.fallback ?? ""
             }
-            return token.fallback ?? ""
+            return token.transforms.reduce(base) { MergeValueFormatter.apply($1, to: $0) }
         }
     }
 

@@ -55,7 +55,7 @@ struct TemplateEditorView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Compose your template").font(.title2).bold()
-            Text("Write the email once. Wrap any field from your contact list in double braces — like {{First Name}} or {{Company}} — and HighRise fills it in for each recipient. You can use as many custom fields as your list has columns. Add a fallback after a pipe — {{First Name|there}} — to use that text when a row has no value instead of holding the message back.")
+            Text("Write the email once. Wrap any field from your contact list in double braces — like {{First Name}} or {{Company}} — and HighRise fills it in for each recipient. Add a fallback after a pipe — {{First Name|there}} — for rows with no value, and format with filters like {{Amount|currency:USD}}, {{Renewal Date|date:MMMM d, yyyy}}, or {{Name|fixcaps}} to fix ALL-CAPS.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

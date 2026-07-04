@@ -30,32 +30,42 @@ struct EmailTemplate: Equatable {
         self.format = format
     }
 
-    /// One parsed `{{ … }}` occurrence: the field name plus an optional inline
-    /// fallback written after a pipe — `{{First Name|there}}`.
+    /// One parsed `{{ … }}` occurrence: the field name plus a chain of pipe
+    /// filters — `{{First Name|there}}`, `{{Amount|currency:USD}}`,
+    /// `{{Renewal Date|default:soon|date:MMMM d, yyyy}}`.
     ///
-    /// A fallback makes the placeholder optional: when the row has no value the
-    /// fallback text is used instead of blocking the send. `{{Field|}}` (an
-    /// explicitly empty fallback) means "render nothing, don't block". Without
-    /// a pipe the field is required and a missing value blocks the row, exactly
-    /// as before — fallbacks are a per-field opt-in, never a silent default.
+    /// A `default:` filter (or a bare `{{Field|there}}`, which parses to one)
+    /// makes the placeholder optional: an empty/missing value uses the fallback
+    /// instead of blocking the send. Without any `default`, a missing value
+    /// still blocks the row — fallbacks stay a per-field opt-in. Other filters
+    /// (upper, date, currency, …) transform whatever value is resolved.
     struct PlaceholderToken: Equatable {
         let name: String
-        let fallback: String?
+        let filters: [MergeValueFormatter.Filter]
+
+        /// The fallback supplied by the first `default:` filter, if any.
+        var fallback: String? {
+            for filter in filters {
+                if case .defaultValue(let text) = filter { return text }
+            }
+            return nil
+        }
+
+        /// Filters that actually transform the value (everything but `default:`),
+        /// in written order.
+        var transforms: [MergeValueFormatter.Filter] {
+            filters.filter { !$0.isDefault }
+        }
     }
 
-    /// Parses the raw inner text of a `{{ … }}` occurrence into name + fallback.
-    /// Splits on the *first* pipe so the fallback itself may contain pipes.
+    /// Parses the raw inner text of a `{{ … }}` occurrence into a name + filters.
+    /// Splits on pipes; the first piece is the field name, each remaining piece a
+    /// filter (a bare fallback like `there` becomes a `default:` filter).
     static func token(fromRawPlaceholder inner: String) -> PlaceholderToken {
-        guard let pipe = inner.firstIndex(of: "|") else {
-            return PlaceholderToken(
-                name: inner.trimmingCharacters(in: .whitespacesAndNewlines),
-                fallback: nil
-            )
-        }
-        let name = String(inner[..<pipe]).trimmingCharacters(in: .whitespacesAndNewlines)
-        let fallback = String(inner[inner.index(after: pipe)...])
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return PlaceholderToken(name: name, fallback: fallback)
+        let pieces = inner.components(separatedBy: "|")
+        let name = pieces.first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let filters = pieces.dropFirst().map { MergeValueFormatter.parseFilter($0) }
+        return PlaceholderToken(name: name, filters: filters)
     }
 
     /// The distinct placeholder names referenced anywhere in subject or body,

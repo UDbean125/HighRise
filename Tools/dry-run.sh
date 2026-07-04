@@ -33,6 +33,7 @@ SRC=(
   HighRise/Services/EmailValidator.swift
   HighRise/Services/CSVParser.swift
   HighRise/Services/DuplicateDetector.swift
+  HighRise/Services/MergeValueFormatter.swift
   HighRise/Services/TemplateMergeEngine.swift
   HighRise/Services/AppleScriptBuilder.swift
   Tools/dry-run/main.swift
