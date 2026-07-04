@@ -157,4 +157,30 @@ struct TemplateMergeEngineTests {
         // referencedFields keeps listing every base name.
         #expect(template.referencedFields == ["Name", "Company", "Project"])
     }
+
+    // MARK: - Duplicate detection
+
+    @Test("mergeAll flags later duplicate addresses and keeps the first sendable")
+    func duplicatesFlaggedByMergeAll() {
+        let template = EmailTemplate(subject: "Hi {{Name}}", body: "x")
+        let contacts = [
+            Contact(fields: ["Name": "Ada"], email: "dup@x.com"),
+            Contact(fields: ["Name": "Bo"], email: "unique@x.com"),
+            Contact(fields: ["Name": "Cy"], email: "DUP@x.com "), // same as row 0, cased/spaced
+        ]
+        let previews = TemplateMergeEngine.mergeAll(template: template, contacts: contacts)
+        #expect(previews[0].isDuplicate == false)
+        #expect(previews[0].isSendable)          // first occurrence sends
+        #expect(previews[1].isDuplicate == false)
+        #expect(previews[2].isDuplicate)          // later repeat held back
+        #expect(!previews[2].isSendable)
+        #expect(previews[2].blockingReason?.contains("Duplicate") == true)
+    }
+
+    @Test("A single-merged preview is never a duplicate")
+    func singleMergeNeverDuplicate() {
+        let template = EmailTemplate(subject: "Hi", body: "x")
+        let preview = TemplateMergeEngine.merge(template: template, with: contact([:]))
+        #expect(!preview.isDuplicate)
+    }
 }

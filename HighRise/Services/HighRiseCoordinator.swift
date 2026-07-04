@@ -56,6 +56,11 @@ final class HighRiseCoordinator: ObservableObject {
     var sendablePreviews: [MergePreview] { previews.filter(\.isSendable) }
     var blockedPreviews: [MergePreview] { previews.filter { !$0.isSendable } }
 
+    /// How many rows are held back purely because they repeat an earlier
+    /// address — surfaced as a distinct warning since it's a list-hygiene issue,
+    /// not a per-row data problem.
+    var duplicateCount: Int { previews.lazy.filter(\.isDuplicate).count }
+
     /// Template fields that none of the imported columns can satisfy — surfaced
     /// in compose so the user notices a typo'd `{{Compnay}}` before review.
     /// Fields whose every use carries a `{{Field|fallback}}` are exempt: they

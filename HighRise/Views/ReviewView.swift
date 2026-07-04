@@ -43,11 +43,16 @@ struct ReviewView: View {
     private var countsBanner: some View {
         let sendable = coordinator.sendablePreviews.count
         let blocked = coordinator.blockedPreviews.count
+        let duplicates = coordinator.duplicateCount
         return VStack(alignment: .leading, spacing: 4) {
             Label("\(sendable) ready to send", systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green).font(.callout)
             if blocked > 0 {
                 Label("\(blocked) excluded (missing data or bad address)", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange).font(.callout)
+            }
+            if duplicates > 0 {
+                Label("\(duplicates) duplicate\(duplicates == 1 ? "" : "s") held back", systemImage: "person.2.slash")
                     .foregroundStyle(.orange).font(.callout)
             }
         }

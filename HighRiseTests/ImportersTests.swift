@@ -82,6 +82,42 @@ struct XLSXReaderTests {
     }
 }
 
+struct DuplicateDetectorTests {
+    @Test("Returns every occurrence after the first, case/space-insensitively")
+    func findsLaterDuplicates() {
+        let contacts = [
+            Contact(fields: [:], email: "a@x.com"),
+            Contact(fields: [:], email: "b@x.com"),
+            Contact(fields: [:], email: "A@X.com"),   // dup of 0
+            Contact(fields: [:], email: " b@x.com "),  // dup of 1
+        ]
+        let dupes = DuplicateDetector.duplicateIDs(in: contacts)
+        #expect(dupes.count == 2)
+        #expect(dupes.contains(contacts[2].id))
+        #expect(dupes.contains(contacts[3].id))
+        #expect(!dupes.contains(contacts[0].id)) // first kept
+        #expect(!dupes.contains(contacts[1].id))
+    }
+
+    @Test("No duplicates in a clean list")
+    func noneWhenUnique() {
+        let contacts = [
+            Contact(fields: [:], email: "a@x.com"),
+            Contact(fields: [:], email: "b@x.com"),
+        ]
+        #expect(DuplicateDetector.duplicateIDs(in: contacts).isEmpty)
+    }
+
+    @Test("Blank addresses are ignored, not treated as duplicates of each other")
+    func blanksIgnored() {
+        let contacts = [
+            Contact(fields: [:], email: ""),
+            Contact(fields: [:], email: "   "),
+        ]
+        #expect(DuplicateDetector.duplicateIDs(in: contacts).isEmpty)
+    }
+}
+
 struct LooseContactExtractorTests {
     @Test("Finds emails and a name guess from prefix text")
     func extracts() {
