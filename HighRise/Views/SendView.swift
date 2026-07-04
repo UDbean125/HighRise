@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Stage 4: choose the client and mode, then create drafts or send. Draft-first
 /// is the default — every message is built automatically (no per-email prompt),
@@ -13,6 +14,7 @@ struct SendView: View {
                 header
                 clientPicker
                 modePicker
+                attachmentControls
                 envelopeControls
                 if coordinator.sendMode == .send {
                     throttleControls
@@ -131,6 +133,60 @@ struct SendView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+        }
+    }
+
+    private var attachmentControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Attachments").font(.headline)
+                Spacer()
+                Button {
+                    addAttachments()
+                } label: {
+                    Label("Add Files…", systemImage: "paperclip")
+                }
+            }
+            Text("The same file(s) are attached to every message.")
+                .font(.callout).foregroundStyle(.secondary)
+
+            ForEach(coordinator.attachments, id: \.self) { url in
+                let missing = coordinator.missingAttachments.contains(url)
+                HStack {
+                    Image(systemName: missing ? "exclamationmark.triangle.fill" : "doc")
+                        .foregroundStyle(missing ? .orange : .secondary)
+                    Text(url.lastPathComponent).lineLimit(1)
+                    if missing {
+                        Text("missing").font(.caption).foregroundStyle(.orange)
+                    }
+                    Spacer()
+                    Button {
+                        coordinator.attachments.removeAll { $0 == url }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Remove attachment")
+                }
+                .padding(.vertical, 1)
+            }
+
+            if let warning = coordinator.attachmentSizeWarning {
+                Label(warning, systemImage: "exclamationmark.triangle")
+                    .font(.callout).foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func addAttachments() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        guard panel.runModal() == .OK else { return }
+        for url in panel.urls where !coordinator.attachments.contains(url) {
+            coordinator.attachments.append(url)
         }
     }
 

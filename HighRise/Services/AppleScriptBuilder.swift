@@ -12,6 +12,9 @@ struct ComposedMessage {
     /// validated by the caller; the builder only escapes and emits them.
     var cc: [String] = []
     var bcc: [String] = []
+    /// POSIX paths of files to attach to every message. Existence is checked by
+    /// the caller before the run; the builder only escapes and emits them.
+    var attachmentPaths: [String] = []
 }
 
 /// Builds the AppleScript that drives Apple Mail / Outlook for a single message.
@@ -80,8 +83,13 @@ enum AppleScriptBuilder {
         let bccLines = m.bcc.map {
             "        make new bcc recipient at end of bcc recipients with properties {address:\(stringLiteral($0))}"
         }
-        let extraRecipients = (ccLines + bccLines).joined(separator: "\n")
-        let recipientBlock = extraRecipients.isEmpty ? "" : "\n" + extraRecipients
+        // Attachments are placed after the last paragraph of the content — the
+        // documented-robust location for Mail, which attaches at a text position.
+        let attachmentLines = m.attachmentPaths.map {
+            "        make new attachment with properties {file name:(POSIX file \(stringLiteral($0)))} at after the last paragraph"
+        }
+        let extras = ccLines + bccLines + attachmentLines
+        let recipientBlock = extras.isEmpty ? "" : "\n" + extras.joined(separator: "\n")
 
         return """
         tell application "Mail"
@@ -114,8 +122,11 @@ enum AppleScriptBuilder {
         let bccLines = m.bcc.map {
             "    make new bcc recipient at newMessage with properties {email address:{address:\(stringLiteral($0))}}"
         }
-        let extraRecipients = (ccLines + bccLines).joined(separator: "\n")
-        let recipientBlock = extraRecipients.isEmpty ? "" : "\n" + extraRecipients
+        let attachmentLines = m.attachmentPaths.map {
+            "    make new attachment at newMessage with properties {file:(POSIX file \(stringLiteral($0)))}"
+        }
+        let extras = ccLines + bccLines + attachmentLines
+        let recipientBlock = extras.isEmpty ? "" : "\n" + extras.joined(separator: "\n")
 
         return """
         tell application "Microsoft Outlook"

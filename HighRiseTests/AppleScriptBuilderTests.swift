@@ -111,6 +111,44 @@ struct AppleScriptBuilderTests {
         #expect(!script.contains("do shell script \"boom\""))
     }
 
+    @Test("Apple Mail attaches each file via an escaped POSIX path")
+    func appleMailAttachments() {
+        let msg = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                  subject: "S", body: "B", isHTML: false,
+                                  attachmentPaths: ["/Users/me/Q3 Report.pdf"])
+        let script = AppleScriptBuilder.script(for: msg, client: .appleMail, mode: .draft)
+        #expect(script.contains("make new attachment with properties {file name:(POSIX file \"/Users/me/Q3 Report.pdf\")} at after the last paragraph"))
+    }
+
+    @Test("Outlook attaches each file via an escaped POSIX path")
+    func outlookAttachments() {
+        let msg = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                  subject: "S", body: "B", isHTML: false,
+                                  attachmentPaths: ["/Users/me/invoice.pdf"])
+        let script = AppleScriptBuilder.script(for: msg, client: .outlook, mode: .draft)
+        #expect(script.contains("make new attachment at newMessage with properties {file:(POSIX file \"/Users/me/invoice.pdf\")}"))
+    }
+
+    @Test("No attachment verbs are emitted when there are none")
+    func noAttachmentsNoVerb() {
+        let msg = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                  subject: "S", body: "B", isHTML: false)
+        let mail = AppleScriptBuilder.script(for: msg, client: .appleMail, mode: .draft)
+        let outlook = AppleScriptBuilder.script(for: msg, client: .outlook, mode: .draft)
+        #expect(!mail.contains("make new attachment"))
+        #expect(!outlook.contains("make new attachment"))
+    }
+
+    @Test("A crafted attachment path stays inside its POSIX file literal")
+    func attachmentPathEscaped() {
+        let msg = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                  subject: "S", body: "B", isHTML: false,
+                                  attachmentPaths: ["/tmp/\" & (do shell script \"boom\") & \""])
+        let script = AppleScriptBuilder.script(for: msg, client: .appleMail, mode: .draft)
+        #expect(!script.contains("do shell script \"boom\""))
+        #expect(script.contains("\\\""))
+    }
+
     @Test("Outlook selects HTML vs plain-text body property by format")
     func outlookBodyProperty() {
         let html = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",

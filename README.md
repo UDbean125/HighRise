@@ -160,4 +160,6 @@ security boundary.
 - **Excel:** a multi-sheet workbook shows a worksheet picker (defaulting to the
   first tab in the workbook's declared order); one sheet is imported at a time.
 - **Word/PDF:** address scraping is best-effort; always review before sending.
-- **Attachments** and an **undo/scheduled-send** window are not yet implemented.
+- **Attachments:** the same file(s) can be attached to every message (with a
+  pre-send size warning); per-recipient attachments are not yet implemented.
+- An **undo/scheduled-send** window is not yet implemented.

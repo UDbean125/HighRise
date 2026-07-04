@@ -38,6 +38,19 @@ final class HighRiseCoordinator: ObservableObject {
     /// Campaign-wide CC / BCC / BCC-me applied to every message in the run.
     @Published var envelope = CampaignEnvelope()
 
+    /// Files attached to every message in the run (same files for all recipients).
+    @Published var attachments: [URL] = []
+
+    /// Attachment files that no longer exist on disk — the run is blocked until
+    /// these are removed or restored, rather than failing per-recipient.
+    var missingAttachments: [URL] { AttachmentSet.missing(attachments) }
+
+    /// A heads-up when the attachments are large enough that servers may bounce
+    /// the message; `nil` when within a safe size.
+    var attachmentSizeWarning: String? {
+        AttachmentSet.oversizeWarning(totalBytes: AttachmentSet.totalBytes(attachments))
+    }
+
     /// How the live send is paced (delay, jitter, batch pauses). Keeps the mail
     /// client responsive and avoids tripping rate limits when sending live.
     @Published var throttle = ThrottlePolicy()
@@ -294,7 +307,15 @@ final class HighRiseCoordinator: ObservableObject {
                                     status: .failed(reason: MailSenderError.clientNotInstalled(selectedClient).localizedDescription))]
             return
         }
+        // Don't start a run that would fail on every message for a missing file.
+        guard missingAttachments.isEmpty else {
+            let names = missingAttachments.map(\.lastPathComponent).joined(separator: ", ")
+            outcomes = [SendOutcome(id: UUID(), contact: queue[0].contact,
+                                    status: .failed(reason: "Missing attachment file(s): \(names). Remove or restore them first."))]
+            return
+        }
 
+        let attachmentPaths = attachments.map(\.path)
         isSending = true
         sendProgress = 0
         outcomes = []
@@ -313,7 +334,8 @@ final class HighRiseCoordinator: ObservableObject {
                     body: preview.resolvedBody,
                     isHTML: template.format == .html,
                     cc: cc,
-                    bcc: bcc
+                    bcc: bcc,
+                    attachmentPaths: attachmentPaths
                 )
                 let status: SendOutcome.Status
                 do {
@@ -368,12 +390,21 @@ final class HighRiseCoordinator: ObservableObject {
             return
         }
 
+        guard missingAttachments.isEmpty else {
+            let names = missingAttachments.map(\.lastPathComponent).joined(separator: ", ")
+            testSendResult = TestSendResult(succeeded: false,
+                message: "Missing attachment file(s): \(names).")
+            return
+        }
+        // The test carries the real attachments (only to the user), but never
+        // the CC/BCC envelope — a test must not email real third parties.
         let message = ComposedMessage(
             recipientEmail: target,
             recipientName: "Test recipient",
             subject: "[TEST] " + sample.resolvedSubject,
             body: sample.resolvedBody,
-            isHTML: template.format == .html
+            isHTML: template.format == .html,
+            attachmentPaths: attachments.map(\.path)
         )
         do {
             try sender.deliver(message, mode: sendMode)
