@@ -458,6 +458,37 @@ final class HighRiseCoordinator: ObservableObject {
     /// Whether there's anything worth exporting yet.
     var hasResultsToExport: Bool { !outcomes.isEmpty || !blockedPreviews.isEmpty }
 
+    // MARK: - Merge to PDF
+
+    /// Filename pattern for generated PDFs; supports `{{Field}}` placeholders.
+    @Published var pdfFilenamePattern: String = "{{Full Name}} - letter.pdf"
+    /// Optional password applied to every generated PDF.
+    @Published var pdfPassword: String = ""
+
+    /// Renders one personalized PDF per sendable recipient into `folder`.
+    /// Returns the count written and the count that failed to render.
+    @discardableResult
+    func exportPersonalizedPDFs(toFolder folder: URL) -> (written: Int, failed: Int) {
+        var written = 0, failed = 0
+        let password = pdfPassword.trimmingCharacters(in: .whitespacesAndNewlines)
+        for preview in sendablePreviews {
+            let name = PDFFilename.make(pattern: pdfFilenamePattern,
+                                        contact: preview.contact,
+                                        fallback: preview.contact.email)
+            do {
+                try PDFComposer.write(content: preview.resolvedBody,
+                                      isHTML: template.format == .html,
+                                      to: folder.appendingPathComponent(name),
+                                      password: password.isEmpty ? nil : password)
+                written += 1
+            } catch {
+                failed += 1
+                Log.send.error("PDF render failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        return (written, failed)
+    }
+
     /// The shared merge-and-deliver loop over an explicit queue.
     private func run(queue: [MergePreview]) {
         guard !isSending else { return }

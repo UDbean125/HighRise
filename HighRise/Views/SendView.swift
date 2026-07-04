@@ -24,6 +24,8 @@ struct SendView: View {
                 Divider()
                 testSendRow
                 Divider()
+                pdfRow
+                Divider()
                 actionRow
                 scheduleRow
                 if !coordinator.outcomes.isEmpty {
@@ -190,6 +192,52 @@ struct SendView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+
+    @State private var pdfStatus: String?
+
+    private var pdfRow: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Generate one personalized PDF per recipient from the message body — for invoices, offer letters, or certificates. Saved locally; never sent anywhere on its own.")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    Text("Filename").font(.subheadline)
+                    TextField("{{Full Name}} - letter.pdf", text: $coordinator.pdfFilenamePattern)
+                        .textFieldStyle(.roundedBorder).frame(maxWidth: 280)
+                }
+                HStack(spacing: 8) {
+                    Text("Password (optional)").font(.subheadline)
+                    SecureField("leave blank for none", text: $coordinator.pdfPassword)
+                        .textFieldStyle(.roundedBorder).frame(maxWidth: 200)
+                }
+                Button {
+                    exportPDFs()
+                } label: {
+                    Label("Save Personalized PDFs…", systemImage: "doc.richtext")
+                }
+                .disabled(coordinator.sendablePreviews.isEmpty)
+                if let pdfStatus {
+                    Text(pdfStatus).font(.callout).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.top, 8)
+        } label: {
+            Label("Merge to PDF", systemImage: "doc.richtext")
+                .font(.headline)
+        }
+    }
+
+    private func exportPDFs() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.prompt = "Choose Folder"
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+        let result = coordinator.exportPersonalizedPDFs(toFolder: folder)
+        pdfStatus = "\(result.written) PDF\(result.written == 1 ? "" : "s") saved"
+            + (result.failed > 0 ? " · \(result.failed) failed" : "") + "."
     }
 
     private func exportResults() {
