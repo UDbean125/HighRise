@@ -20,9 +20,53 @@ enum CSVParser {
         }
     }
 
-    /// Splits raw CSV text into a header row plus data rows.
-    static func parse(_ text: String) throws -> RecipientTable {
-        let allRows = parseRows(text)
+    /// Decodes raw file bytes into text, tolerating the encodings real exports
+    /// use: UTF-8 (with or without BOM), UTF-16 (BOM-marked), and the common
+    /// single-byte Windows/Latin encodings. Returns nil only if every attempt
+    /// fails. A leading UTF-8 BOM is stripped so it can't corrupt the first
+    /// header name.
+    static func decode(_ data: Data) -> String? {
+        // UTF-16 with BOM decodes cleanly via .utf16; try it when a BOM is present.
+        if data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF]) {
+            if let s = String(data: data, encoding: .utf16) { return stripBOM(s) }
+        }
+        for encoding: String.Encoding in [.utf8, .utf16, .windowsCP1252, .isoLatin1] {
+            if let s = String(data: data, encoding: encoding) { return stripBOM(s) }
+        }
+        return nil
+    }
+
+    /// Removes a leading Unicode BOM (`U+FEFF`) if present.
+    static func stripBOM(_ text: String) -> String {
+        text.hasPrefix("\u{FEFF}") ? String(text.dropFirst()) : text
+    }
+
+    /// The delimiter that best fits `text`: whichever of comma, semicolon, or tab
+    /// occurs most on the header line (outside quotes). Semicolon-delimited
+    /// European CSVs and tab-separated files are detected automatically.
+    /// Defaults to comma when there's no clear winner.
+    static func detectDelimiter(in text: String) -> Character {
+        let firstLine = stripBOM(text).prefix { $0 != "\n" && $0 != "\r" }
+        let candidates: [Character] = [",", ";", "\t"]
+        var counts: [Character: Int] = [:]
+        var inQuotes = false
+        for ch in firstLine {
+            if ch == "\"" { inQuotes.toggle() }
+            else if !inQuotes, candidates.contains(ch) { counts[ch, default: 0] += 1 }
+        }
+        let maxCount = counts.values.max() ?? 0
+        guard maxCount > 0 else { return "," }
+        // Iterate in priority order so comma wins any tie.
+        return candidates.first { counts[$0] == maxCount } ?? ","
+    }
+
+    /// Splits raw CSV text into a header row plus data rows. The delimiter is
+    /// auto-detected (comma / semicolon / tab) unless one is given, and a leading
+    /// BOM is stripped.
+    static func parse(_ text: String, delimiter: Character? = nil) throws -> RecipientTable {
+        let clean = stripBOM(text)
+        let sep = delimiter ?? detectDelimiter(in: clean)
+        let allRows = parseRows(clean, delimiter: sep)
         guard let header = allRows.first else { throw ParseError.empty }
         let headers = header.map { $0.trimmingCharacters(in: .whitespaces) }
         guard headers.contains(where: { !$0.isEmpty }) else { throw ParseError.noHeaderRow }
@@ -34,8 +78,9 @@ enum CSVParser {
         return RecipientTable(headers: headers, rows: Array(dataRows))
     }
 
-    /// The state-machine tokenizer. Returns one `[String]` per record.
-    static func parseRows(_ text: String) -> [[String]] {
+    /// The state-machine tokenizer. Returns one `[String]` per record, splitting
+    /// fields on `delimiter`.
+    static func parseRows(_ text: String, delimiter: Character = ",") -> [[String]] {
         var rows: [[String]] = []
         var field = ""
         var record: [String] = []
@@ -61,20 +106,19 @@ enum CSVParser {
                     field.append(c)
                 }
             } else {
-                switch c {
-                case "\"":
+                if c == "\"" {
                     inQuotes = true
-                case ",":
+                } else if c == delimiter {
                     endField()
-                case "\r":
+                } else if c == "\r" {
                     // Swallow CR; a following LF is handled as the record break.
                     if i + 1 < scalars.count && scalars[i + 1] == "\n" {
                         i += 1
                     }
                     endRecord()
-                case "\n":
+                } else if c == "\n" {
                     endRecord()
-                default:
+                } else {
                     field.append(c)
                 }
             }

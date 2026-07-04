@@ -278,9 +278,16 @@ final class HighRiseCoordinator: ObservableObject {
         do {
             switch ext {
             case "csv", "tsv", "txt":
-                let text = try String(contentsOf: url, encoding: .utf8)
-                let table = try CSVParser.parse(text)
+                let data = try Data(contentsOf: url)
+                guard let text = CSVParser.decode(data) else {
+                    reportImportFailure("Couldn't read \(url.lastPathComponent) — its text encoding isn't recognized. Re-save it as UTF-8 CSV.")
+                    return
+                }
+                // TSV files are tab-delimited; other text auto-detects.
+                let table = try CSVParser.parse(text, delimiter: ext == "tsv" ? "\t" : nil)
                 ingest(table, sourceLabel: url.lastPathComponent)
+            case "numbers":
+                reportImportFailure("Apple Numbers files can't be read directly. In Numbers, choose File ▸ Export To ▸ CSV… (or Excel), then import that file.")
             case "xlsx":
                 let sheets = (try? XLSXReader.worksheets(in: url)) ?? []
                 let table = try XLSXReader.read(url)
