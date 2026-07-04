@@ -27,6 +27,7 @@ fi
 SRC=(
   HighRise/Models/Contact.swift
   HighRise/Models/RecipientTable.swift
+  HighRise/Models/TemplateVariant.swift
   HighRise/Models/EmailTemplate.swift
   HighRise/Models/MergePreview.swift
   HighRise/Models/MailClient.swift

@@ -49,8 +49,10 @@ enum TemplateMergeEngine {
             }
         }
 
-        let subject = substitute(template.subject, false)
-        let body = substitute(template.body, template.format == .html)
+        // Pick the variant (if any) whose rule matches this contact.
+        let effective = template.effective(for: contact)
+        let subject = substitute(effective.subject, false)
+        let body = substitute(effective.body, template.format == .html)
 
         return MergePreview(
             id: contact.id,

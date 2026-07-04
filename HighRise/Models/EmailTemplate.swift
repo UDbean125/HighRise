@@ -24,10 +24,26 @@ struct EmailTemplate: Equatable {
     var body: String
     var format: BodyFormat
 
-    init(subject: String = "", body: String = "", format: BodyFormat = .plainText) {
+    /// Optional per-recipient variants. The first variant whose rule matches a
+    /// contact supplies that recipient's subject/body; otherwise the base
+    /// subject/body is used. The `format` (plain/HTML) is shared across all.
+    var variants: [TemplateVariant]
+
+    init(subject: String = "", body: String = "", format: BodyFormat = .plainText,
+         variants: [TemplateVariant] = []) {
         self.subject = subject
         self.body = body
         self.format = format
+        self.variants = variants
+    }
+
+    /// The subject/body to render for `contact`: the first matching variant, or
+    /// the base template when none match.
+    func effective(for contact: Contact) -> (subject: String, body: String) {
+        for variant in variants where variant.rule.matches(contact) {
+            return (variant.subject, variant.body)
+        }
+        return (subject, body)
     }
 
     /// One parsed `{{ … }}` occurrence: the field name plus a chain of pipe
@@ -68,32 +84,42 @@ struct EmailTemplate: Equatable {
         return PlaceholderToken(name: name, filters: filters)
     }
 
-    /// The distinct placeholder names referenced anywhere in subject or body,
-    /// in first-appearance order. Used to tell the user which columns their
-    /// template expects. Names are the base field names — a fallback never
-    /// changes which column a placeholder refers to.
+    /// Every piece of merge-able text in the template: the base subject/body plus
+    /// each variant's subject/body. Rule fields are handled separately.
+    private var allMergeableText: [String] {
+        [subject, body] + variants.flatMap { [$0.subject, $0.body] }
+    }
+
+    /// The distinct placeholder names referenced anywhere in the base or any
+    /// variant, plus the fields used by routing rules, in first-appearance
+    /// order. Used to tell the user which columns their template expects.
     var referencedFields: [String] {
         var seen = Set<String>()
         var ordered: [String] = []
-        for field in Self.placeholderNames(in: subject) + Self.placeholderNames(in: body) {
+        func add(_ field: String) {
             let key = field.lowercased()
-            if !seen.contains(key) {
-                seen.insert(key)
-                ordered.append(field)
-            }
+            guard !key.isEmpty, !seen.contains(key) else { return }
+            seen.insert(key)
+            ordered.append(field)
         }
+        for text in allMergeableText {
+            Self.placeholderNames(in: text).forEach(add)
+        }
+        variants.forEach { add($0.rule.field) }
         return ordered
     }
 
     /// The subset of `referencedFields` that appears at least once *without* a
-    /// fallback. Only these must be satisfied by the imported list; a field
-    /// whose every use carries a fallback can't block a send, so it shouldn't
-    /// trigger the "no column for …" warning either.
+    /// fallback in mergeable text. Only these must be satisfied by the imported
+    /// list; a field whose every use carries a fallback can't block a send, and
+    /// a routing-rule field being empty is a valid state — so neither triggers
+    /// the "no column for …" warning on its own.
     var fieldsRequiringData: [String] {
         var required = Set<String>()
-        for token in Self.placeholderTokens(in: subject) + Self.placeholderTokens(in: body)
-        where token.fallback == nil {
-            required.insert(token.name.lowercased())
+        for text in allMergeableText {
+            for token in Self.placeholderTokens(in: text) where token.fallback == nil {
+                required.insert(token.name.lowercased())
+            }
         }
         return referencedFields.filter { required.contains($0.lowercased()) }
     }

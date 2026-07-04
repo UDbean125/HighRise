@@ -44,6 +44,7 @@ struct TemplateEditorView: View {
                 }
 
                 fieldPalette
+                variantsEditor
                 fieldsSummary
             }
             .padding(24)
@@ -129,6 +130,72 @@ struct TemplateEditorView: View {
         guard let last = existing.last else { return token }
         let needsSpace = !last.isWhitespace && last != "\n"
         return existing + (needsSpace ? " " : "") + token
+    }
+
+    // MARK: - Conditional variants
+
+    private var variantsEditor: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Send a different subject/body to recipients matching a rule. The first matching variant wins; everyone else gets the template above.")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                ForEach($coordinator.template.variants) { $variant in
+                    variantCard($variant)
+                }
+
+                Button {
+                    coordinator.template.variants.append(TemplateVariant())
+                } label: {
+                    Label("Add a variant", systemImage: "plus.circle")
+                }
+            }
+            .padding(.top, 8)
+        } label: {
+            Label("Conditional variants (\(coordinator.template.variants.count))", systemImage: "arrow.triangle.branch")
+                .font(.headline)
+        }
+    }
+
+    private func variantCard(_ variant: Binding<TemplateVariant>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text("If").foregroundStyle(.secondary)
+                fieldMenu(variant.rule.field)
+                Picker("", selection: variant.rule.predicate) {
+                    ForEach(RoutingRule.Predicate.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .labelsHidden().frame(maxWidth: 150)
+                if variant.wrappedValue.rule.predicate.needsValue {
+                    TextField("value", text: variant.rule.value)
+                        .textFieldStyle(.roundedBorder).frame(maxWidth: 160)
+                }
+                Spacer()
+                Button(role: .destructive) {
+                    coordinator.template.variants.removeAll { $0.id == variant.wrappedValue.id }
+                } label: { Image(systemName: "trash") }
+                .buttonStyle(.borderless)
+            }
+            TextField("Variant subject", text: variant.subject)
+                .textFieldStyle(.roundedBorder)
+            TextEditor(text: variant.body)
+                .font(.body).frame(minHeight: 80)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+        }
+        .padding(10)
+        .background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func fieldMenu(_ selection: Binding<String>) -> some View {
+        Menu {
+            ForEach(coordinator.importedHeaders, id: \.self) { header in
+                Button(header) { selection.wrappedValue = header }
+            }
+        } label: {
+            Text(selection.wrappedValue.isEmpty ? "field" : selection.wrappedValue)
+                .frame(maxWidth: 140)
+        }
     }
 
     @ViewBuilder
