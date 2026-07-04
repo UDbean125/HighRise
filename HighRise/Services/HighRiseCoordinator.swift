@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import Combine
 import os
 
 /// The app's single source of truth, driving the import → review → send flow.
@@ -25,35 +26,189 @@ final class HighRiseCoordinator: ObservableObject {
     @Published private(set) var importSummary: String?
     @Published var importError: String?
 
+    /// Optional column whose value is a per-recipient attachment file path
+    /// (`;`-separated for several, `~` expanded). Nil = no per-recipient files.
+    @Published var attachmentColumn: String?
+
+    /// For a multi-sheet `.xlsx`: the visible worksheets and which one is loaded,
+    /// so the import screen can offer a tab picker. Empty for other sources and
+    /// single-sheet workbooks.
+    @Published private(set) var availableWorksheets: [XLSXReader.Worksheet] = []
+    @Published private(set) var selectedWorksheet: String?
+    private var workbookURL: URL?
+
     @Published var selectedClient: MailClient = .appleMail
     @Published var sendMode: SendMode = .draft
 
-    /// How long to pause between messages, in seconds. A small gap keeps the
-    /// mail client responsive and avoids tripping rate limits when sending live.
-    @Published var perMessageDelay: Double = 0.4
+    /// Campaign-wide CC / BCC / BCC-me applied to every message in the run.
+    @Published var envelope = CampaignEnvelope()
+
+    /// Optional From identity for Apple Mail (e.g. `Jordan <jordan@work.com>`),
+    /// which must match a configured Mail account. Empty = default account.
+    @Published var senderIdentity: String = ""
+
+    /// The sender to hand the builder — only for Apple Mail (Outlook sends from
+    /// its own default account), and only when the user set one.
+    private var effectiveSender: String? {
+        guard selectedClient == .appleMail else { return nil }
+        let trimmed = senderIdentity.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// Files attached to every message in the run (same files for all recipients).
+    @Published var attachments: [URL] = []
+
+    /// Attachment files that no longer exist on disk — the run is blocked until
+    /// these are removed or restored, rather than failing per-recipient.
+    var missingAttachments: [URL] { AttachmentSet.missing(attachments) }
+
+    /// A heads-up when the attachments are large enough that servers may bounce
+    /// the message; `nil` when within a safe size.
+    var attachmentSizeWarning: String? {
+        AttachmentSet.oversizeWarning(totalBytes: AttachmentSet.totalBytes(attachments))
+    }
+
+    /// How the live send is paced (delay, jitter, batch pauses). Keeps the mail
+    /// client responsive and avoids tripping rate limits when sending live.
+    @Published var throttle = ThrottlePolicy()
+
+    /// The user's mail provider, used only to warn when a run looks likely to
+    /// exceed its rough daily cap.
+    @Published var sendingProvider: SendingProvider = .other
+
+    /// A heads-up when the number of ready recipients exceeds the selected
+    /// provider's approximate daily limit; `nil` when within limits or unknown.
+    var quotaWarning: String? {
+        sendingProvider.quotaWarning(forRecipientCount: sendablePreviews.count)
+    }
 
     @Published private(set) var isSending = false
     @Published private(set) var sendProgress: Double = 0
     @Published private(set) var outcomes: [SendOutcome] = []
 
+    /// Where a "send test to myself" goes, and the result of the last attempt,
+    /// shown inline on the Send screen.
+    @Published var testRecipient: String = ""
+    @Published private(set) var testSendResult: TestSendResult?
+
+    struct TestSendResult: Equatable {
+        let succeeded: Bool
+        let message: String
+    }
+
     private var parsedTable: RecipientTable?
     private var sendTask: Task<Void, Never>?
+
+    /// When a run is scheduled, the fire time and a frozen snapshot of the
+    /// recipients to send — so later edits don't change what was scheduled, and
+    /// the run can be canceled any time before it fires.
+    @Published private(set) var scheduledFireDate: Date?
+    private var scheduledQueue: [MergePreview] = []
+    private var scheduleTask: Task<Void, Never>?
+    var isScheduled: Bool { scheduledFireDate != nil }
+
+    /// The on-device do-not-contact list. Mutations are mirrored into
+    /// `suppressionEntries` so SwiftUI re-renders and `previews` re-evaluates.
+    private let doNotContact = DoNotContactStore()
+    @Published private(set) var suppressionEntries: [SuppressionEntry] = []
+
+    /// The saved-template library and crash-safe autosave of the working draft.
+    private let library = TemplateLibraryStore()
+    @Published private(set) var savedTemplates: [SavedTemplate] = []
+    private var cancellables = Set<AnyCancellable>()
+
+    init() {
+        suppressionEntries = doNotContact.entries
+        savedTemplates = library.templates
+        // Restore the last working draft if one was autosaved.
+        if let restored = library.loadAutosave() { template = restored }
+        // Autosave the working draft, debounced so it's not written per keystroke.
+        $template
+            .debounce(for: .seconds(1), scheduler: RunLoop.main)
+            .sink { [weak self] draft in self?.library.saveAutosave(draft) }
+            .store(in: &cancellables)
+    }
+
+    // MARK: - Template library
+
+    /// Saves the current template under `name` (overwriting a same-named one).
+    func saveCurrentTemplate(as name: String) {
+        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        library.save(template, as: name)
+        savedTemplates = library.templates
+    }
+
+    /// Loads a saved template into the composer.
+    func loadTemplate(_ saved: SavedTemplate) {
+        template = saved.template
+    }
+
+    func deleteTemplate(_ saved: SavedTemplate) {
+        library.delete(id: saved.id)
+        savedTemplates = library.templates
+    }
 
     // MARK: - Derived state
 
     /// Live previews of the merged messages for every imported contact.
     var previews: [MergePreview] {
-        TemplateMergeEngine.mergeAll(template: template, contacts: contacts)
+        TemplateMergeEngine.mergeAll(template: template, contacts: contacts,
+                                     isSuppressed: { self.doNotContact.isSuppressed($0.email) },
+                                     attachments: { self.recipientAttachments(for: $0) })
+    }
+
+    /// Resolves a contact's per-recipient attachment paths (and which are
+    /// missing) from `attachmentColumn`. Empty when the feature isn't in use.
+    private func recipientAttachments(for contact: Contact) -> (paths: [String], missing: [String]) {
+        guard let column = attachmentColumn,
+              let raw = contact.value(for: column), !raw.isEmpty else { return ([], []) }
+        let paths = AttachmentSet.paths(fromColumnValue: raw)
+        let missing = paths.filter { !FileManager.default.fileExists(atPath: $0) }
+        return (paths, missing)
     }
 
     var sendablePreviews: [MergePreview] { previews.filter(\.isSendable) }
     var blockedPreviews: [MergePreview] { previews.filter { !$0.isSendable } }
 
+    /// How many rows are held back purely because they repeat an earlier
+    /// address — surfaced as a distinct warning since it's a list-hygiene issue,
+    /// not a per-row data problem.
+    var duplicateCount: Int { previews.lazy.filter(\.isDuplicate).count }
+
+    /// How many rows are held back because they're on the do-not-contact list.
+    var suppressedCount: Int { previews.lazy.filter(\.isSuppressed).count }
+
+    // MARK: - Do-not-contact list
+
+    /// Adds an address to the do-not-contact list. Returns false on invalid or
+    /// already-present input, so the UI can flag it.
+    @discardableResult
+    func suppressAddress(_ address: String, note: String? = nil) -> Bool {
+        let added = doNotContact.addAddress(address, note: note)
+        if added { suppressionEntries = doNotContact.entries }
+        return added
+    }
+
+    /// Adds a whole domain (e.g. `acme.com`) to the do-not-contact list.
+    @discardableResult
+    func suppressDomain(_ domain: String, note: String? = nil) -> Bool {
+        let added = doNotContact.addDomain(domain, note: note)
+        if added { suppressionEntries = doNotContact.entries }
+        return added
+    }
+
+    func removeSuppression(_ entry: SuppressionEntry) {
+        doNotContact.remove(entry)
+        suppressionEntries = doNotContact.entries
+    }
+
     /// Template fields that none of the imported columns can satisfy — surfaced
     /// in compose so the user notices a typo'd `{{Compnay}}` before review.
+    /// Fields whose every use carries a `{{Field|fallback}}` are exempt: they
+    /// can't block a send, so a missing column isn't a problem.
     var unmatchedTemplateFields: [String] {
         let available = Set(importedHeaders.map { $0.lowercased() })
-        return template.referencedFields.filter { !available.contains($0.lowercased()) }
+        return template.fieldsRequiringData.filter { !available.contains($0.lowercased()) }
     }
 
     var canProceedToContacts: Bool {
@@ -74,6 +229,7 @@ final class HighRiseCoordinator: ObservableObject {
         parsedTable = table
         importedHeaders = table.headers
         importError = nil
+        attachmentColumn = Self.detectAttachmentColumn(in: table.headers)
 
         // Choosing the email column repopulates `contacts` via `didSet`;
         // when detection lands on the column already selected, remap by hand.
@@ -99,6 +255,7 @@ final class HighRiseCoordinator: ObservableObject {
         contacts = []
         importedHeaders = []
         parsedTable = nil
+        clearWorkbookSelection()
         Log.csv.error("Import failed: \(message, privacy: .public)")
     }
 
@@ -116,6 +273,8 @@ final class HighRiseCoordinator: ObservableObject {
     /// Routes a dropped/chosen file to the right reader based on its extension.
     func importFile(at url: URL) {
         let ext = url.pathExtension.lowercased()
+        // Any new file supersedes a previously loaded workbook's sheet picker.
+        clearWorkbookSelection()
         do {
             switch ext {
             case "csv", "tsv", "txt":
@@ -123,8 +282,15 @@ final class HighRiseCoordinator: ObservableObject {
                 let table = try CSVParser.parse(text)
                 ingest(table, sourceLabel: url.lastPathComponent)
             case "xlsx":
+                let sheets = (try? XLSXReader.worksheets(in: url)) ?? []
                 let table = try XLSXReader.read(url)
-                ingest(table, sourceLabel: url.lastPathComponent)
+                // Only offer the picker when there's a real choice to make.
+                if sheets.count > 1 {
+                    workbookURL = url
+                    availableWorksheets = sheets
+                    selectedWorksheet = sheets.first?.name
+                }
+                ingest(table, sourceLabel: sheetSourceLabel(url, sheet: selectedWorksheet))
             case "docx", "pdf":
                 let text = try DocumentTextExtractor.extractText(from: url)
                 let table = LooseContactExtractor.table(from: text)
@@ -165,18 +331,202 @@ final class HighRiseCoordinator: ObservableObject {
         }
     }
 
+    /// Re-imports the loaded workbook using a different worksheet tab.
+    func selectWorksheet(_ name: String) {
+        guard let url = workbookURL, name != selectedWorksheet else { return }
+        do {
+            let table = try XLSXReader.read(url, sheetName: name)
+            selectedWorksheet = name
+            emailColumn = nil // headers may differ between sheets; re-detect
+            ingest(table, sourceLabel: sheetSourceLabel(url, sheet: name))
+        } catch {
+            reportImportFailure("Couldn't read “\(name)”: \(error.localizedDescription)")
+        }
+    }
+
+    /// A source label that names the chosen sheet, e.g. `Leads.xlsx › Q3`.
+    private func sheetSourceLabel(_ url: URL, sheet: String?) -> String {
+        guard let sheet else { return url.lastPathComponent }
+        return "\(url.lastPathComponent) › \(sheet)"
+    }
+
+    private func clearWorkbookSelection() {
+        workbookURL = nil
+        availableWorksheets = []
+        selectedWorksheet = nil
+    }
+
+    /// Guesses an attachment column from the headers (a column named
+    /// "attachment"/"attachments"/"file"/"files"), else nil.
+    static func detectAttachmentColumn(in headers: [String]) -> String? {
+        headers.first {
+            let h = $0.lowercased()
+            return h == "attachment" || h == "attachments" || h == "file" || h == "files"
+        }
+    }
+
     private func remapContacts() {
         guard let table = parsedTable else { return }
         let (parsedContacts, _) = CSVParser.contacts(from: table, emailHeader: emailColumn)
         contacts = parsedContacts
     }
 
+    // MARK: - Name-inference repair
+
+    /// For a row blocked on a missing first-name field, a suggested (field, name)
+    /// inferred from the recipient's email — or nil when there's nothing to
+    /// suggest. Offered as a manual fix in review, never applied automatically.
+    func nameSuggestion(for preview: MergePreview) -> (field: String, name: String)? {
+        guard let field = preview.unresolvedFields.first(where: { Self.isFirstNameField($0) }),
+              let name = NameInference.suggestedFirstName(from: preview.contact.email)
+        else { return nil }
+        return (field, name)
+    }
+
+    /// Fills `field` with `value` for the given contact and re-merges.
+    func fillField(_ field: String, with value: String, forContact id: UUID) {
+        guard let index = contacts.firstIndex(where: { $0.id == id }) else { return }
+        contacts[index].fields[field] = value
+    }
+
+    private static func isFirstNameField(_ field: String) -> Bool {
+        let key = field.lowercased().replacingOccurrences(of: " ", with: "")
+        return key == "firstname" || key == "name" || key == "first" || key == "givenname"
+    }
+
     // MARK: - Sending
 
     /// Runs the merge-and-deliver loop over every sendable preview.
     func startSending() {
+        cancelSchedule() // a manual send supersedes any pending schedule
+        run(queue: sendablePreviews)
+    }
+
+    /// Schedules the current sendable recipients to be sent/drafted at `date`.
+    /// The recipient list and merged content are frozen now; client, mode, and
+    /// throttle are applied at fire time. Requires the Mac awake and the app
+    /// running — see `ScheduledSend`.
+    func scheduleSend(at date: Date) {
+        let seconds = ScheduledSend.secondsUntil(date, from: Date())
+        guard seconds > 0, !sendablePreviews.isEmpty, !isSending else { return }
+        cancelSchedule()
+        scheduledQueue = sendablePreviews
+        scheduledFireDate = date
+        Log.send.info("Scheduled \(self.scheduledQueue.count, privacy: .public) messages for a future time")
+        scheduleTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            let queue = scheduledQueue
+            scheduledFireDate = nil
+            scheduledQueue = []
+            run(queue: queue)
+        }
+    }
+
+    func cancelSchedule() {
+        scheduleTask?.cancel()
+        scheduleTask = nil
+        scheduledFireDate = nil
+        scheduledQueue = []
+    }
+
+    /// Re-runs only the recipients whose last attempt failed (transient errors
+    /// like a declined prompt or a briefly-unavailable client). Rows held back
+    /// for missing data aren't retried — those need corrected data re-imported.
+    func retryFailed() {
+        let failedIDs = Set(outcomes.compactMap { outcome -> UUID? in
+            if case .failed = outcome.status { return outcome.id }
+            return nil
+        })
+        let queue = previews.filter { failedIDs.contains($0.id) && $0.isSendable }
+        cancelSchedule()
+        run(queue: queue)
+    }
+
+    /// How many of the last run's recipients failed (enables the retry action).
+    var failedCount: Int {
+        outcomes.filter { if case .failed = $0.status { return true }; return false }.count
+    }
+
+    /// A complete per-recipient results report (sent/drafted/held/failed) for
+    /// the last run, or the currently held-back rows before a run. Empty only
+    /// when there's nothing to report.
+    func resultsReportCSV() -> String {
+        RunReportExporter.csv(RunReportExporter.rows(outcomes: outcomes, blocked: blockedPreviews))
+    }
+
+    /// Whether there's anything worth exporting yet.
+    var hasResultsToExport: Bool { !outcomes.isEmpty || !blockedPreviews.isEmpty }
+
+    // MARK: - Merge to PDF
+
+    /// Filename pattern for generated PDFs; supports `{{Field}}` placeholders.
+    @Published var pdfFilenamePattern: String = "{{Full Name}} - letter.pdf"
+    /// Optional password applied to every generated PDF.
+    @Published var pdfPassword: String = ""
+
+    /// Writes one `.eml` draft per sendable recipient into `folder`, carrying the
+    /// full HTML body so Apple Mail can open it at full fidelity (double-click,
+    /// or File ▸ Import). Experimental — see `MIMEMessageComposer`. Returns the
+    /// count written and the count that failed.
+    @discardableResult
+    func exportHTMLDrafts(toFolder folder: URL) -> (written: Int, failed: Int) {
+        let date = Self.rfc822Date(Date())
+        var written = 0, failed = 0
+        for (index, preview) in sendablePreviews.enumerated() {
+            let plain = HTMLTextExtractor.plainText(fromHTML: preview.resolvedBody)
+            let message = MIMEMessageComposer.Message(
+                from: effectiveSender, to: preview.contact.email,
+                subject: preview.resolvedSubject, html: preview.resolvedBody, plainText: plain)
+            // A stable, collision-free boundary without relying on randomness.
+            let boundary = "HighRise-boundary-\(index)-\(preview.contact.email.hashValue)"
+            let eml = MIMEMessageComposer.eml(message, boundary: boundary, date: date)
+            let name = PDFFilename.sanitize(preview.contact.email) + ".eml"
+            do {
+                try eml.write(to: folder.appendingPathComponent(name), atomically: true, encoding: .utf8)
+                written += 1
+            } catch {
+                failed += 1
+                Log.send.error("EML draft write failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        return (written, failed)
+    }
+
+    private static func rfc822Date(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
+        return formatter.string(from: date)
+    }
+
+    /// Renders one personalized PDF per sendable recipient into `folder`.
+    /// Returns the count written and the count that failed to render.
+    @discardableResult
+    func exportPersonalizedPDFs(toFolder folder: URL) -> (written: Int, failed: Int) {
+        var written = 0, failed = 0
+        let password = pdfPassword.trimmingCharacters(in: .whitespacesAndNewlines)
+        for preview in sendablePreviews {
+            let name = PDFFilename.make(pattern: pdfFilenamePattern,
+                                        contact: preview.contact,
+                                        fallback: preview.contact.email)
+            do {
+                try PDFComposer.write(content: preview.resolvedBody,
+                                      isHTML: template.format == .html,
+                                      to: folder.appendingPathComponent(name),
+                                      password: password.isEmpty ? nil : password)
+                written += 1
+            } catch {
+                failed += 1
+                Log.send.error("PDF render failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        return (written, failed)
+    }
+
+    /// The shared merge-and-deliver loop over an explicit queue.
+    private func run(queue: [MergePreview]) {
         guard !isSending else { return }
-        let queue = sendablePreviews
         guard !queue.isEmpty else { return }
 
         let sender = MailSender(client: selectedClient)
@@ -185,7 +535,15 @@ final class HighRiseCoordinator: ObservableObject {
                                     status: .failed(reason: MailSenderError.clientNotInstalled(selectedClient).localizedDescription))]
             return
         }
+        // Don't start a run that would fail on every message for a missing file.
+        guard missingAttachments.isEmpty else {
+            let names = missingAttachments.map(\.lastPathComponent).joined(separator: ", ")
+            outcomes = [SendOutcome(id: UUID(), contact: queue[0].contact,
+                                    status: .failed(reason: "Missing attachment file(s): \(names). Remove or restore them first."))]
+            return
+        }
 
+        let attachmentPaths = attachments.map(\.path)
         isSending = true
         sendProgress = 0
         outcomes = []
@@ -196,12 +554,19 @@ final class HighRiseCoordinator: ObservableObject {
             var collected: [SendOutcome] = []
             for (index, preview) in queue.enumerated() {
                 if Task.isCancelled { break }
+                let (cc, bcc) = envelope.resolved(for: preview.contact)
+                // Campaign-wide files plus this recipient's own column files.
+                let allAttachments = attachmentPaths + preview.attachmentPaths
                 let message = ComposedMessage(
                     recipientEmail: preview.contact.email,
                     recipientName: preview.contact.displayName,
                     subject: preview.resolvedSubject,
                     body: preview.resolvedBody,
-                    isHTML: template.format == .html
+                    isHTML: template.format == .html,
+                    cc: cc,
+                    bcc: bcc,
+                    attachmentPaths: allAttachments,
+                    sender: effectiveSender
                 )
                 let status: SendOutcome.Status
                 do {
@@ -215,8 +580,9 @@ final class HighRiseCoordinator: ObservableObject {
                 outcomes = collected
                 sendProgress = Double(index + 1) / Double(queue.count)
 
-                if perMessageDelay > 0 && index < queue.count - 1 {
-                    try? await Task.sleep(nanoseconds: UInt64(perMessageDelay * 1_000_000_000))
+                let delay = throttle.delayAfter(index: index, count: queue.count)
+                if delay > 0 {
+                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                 }
             }
             isSending = false
@@ -231,6 +597,62 @@ final class HighRiseCoordinator: ObservableObject {
         Log.send.info("Send cancelled by user")
     }
 
+    /// Sends (or drafts) one fully-merged sample message to the user's own
+    /// address so they can see the real inbox render before the run. Uses the
+    /// first ready recipient as the sample and the currently selected client and
+    /// mode, with a `[TEST]` subject prefix. Complements — doesn't replace — the
+    /// per-recipient review step.
+    func sendTestToSelf() {
+        let target = testRecipient.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard EmailValidator.isValid(target) else {
+            testSendResult = TestSendResult(succeeded: false,
+                message: "Enter a valid email address to send yourself a test.")
+            return
+        }
+        guard let sample = sendablePreviews.first else {
+            testSendResult = TestSendResult(succeeded: false,
+                message: "No ready message to test yet — import a list and compose your template first.")
+            return
+        }
+        let sender = MailSender(client: selectedClient)
+        guard sender.isClientInstalled else {
+            testSendResult = TestSendResult(succeeded: false,
+                message: MailSenderError.clientNotInstalled(selectedClient).localizedDescription)
+            return
+        }
+
+        guard missingAttachments.isEmpty else {
+            let names = missingAttachments.map(\.lastPathComponent).joined(separator: ", ")
+            testSendResult = TestSendResult(succeeded: false,
+                message: "Missing attachment file(s): \(names).")
+            return
+        }
+        // The test carries the real attachments (only to the user), but never
+        // the CC/BCC envelope — a test must not email real third parties.
+        let message = ComposedMessage(
+            recipientEmail: target,
+            recipientName: "Test recipient",
+            subject: "[TEST] " + sample.resolvedSubject,
+            body: sample.resolvedBody,
+            isHTML: template.format == .html,
+            attachmentPaths: attachments.map(\.path),
+            sender: effectiveSender
+        )
+        do {
+            try sender.deliver(message, mode: sendMode)
+            let where_ = sendMode == .send
+                ? "Test sent to \(target)."
+                : "Test draft for \(target) created in \(selectedClient.rawValue)."
+            testSendResult = TestSendResult(succeeded: true,
+                message: "\(where_) Sampled “\(sample.contact.displayName)”.")
+            Log.send.info("Test \(self.sendMode == .send ? "send" : "draft", privacy: .public) to self succeeded")
+        } catch {
+            testSendResult = TestSendResult(succeeded: false,
+                message: "Test failed: \(error.localizedDescription)")
+            Log.send.error("Test send failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     /// Clears the contact list and results, keeping the composed template so the
     /// user can run another list against the same draft.
     func resetForNewList() {
@@ -241,6 +663,8 @@ final class HighRiseCoordinator: ObservableObject {
         importError = nil
         parsedTable = nil
         emailColumn = nil
+        attachmentColumn = nil
+        clearWorkbookSelection()
         outcomes = []
         sendProgress = 0
         stage = .contacts

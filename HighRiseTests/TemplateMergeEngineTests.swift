@@ -80,4 +80,128 @@ struct TemplateMergeEngineTests {
         let template = EmailTemplate(subject: "{{Name}} {{Company}}", body: "{{Name}} {{Project}}")
         #expect(template.referencedFields == ["Name", "Company", "Project"])
     }
+
+    // MARK: - Fallback values ({{Field|fallback}})
+
+    @Test("Fallback is used when the field is missing, and the row still sends")
+    func fallbackForMissingField() {
+        let template = EmailTemplate(subject: "Hi {{First Name|there}}", body: "x")
+        let preview = TemplateMergeEngine.merge(template: template, with: contact([:]))
+        #expect(preview.resolvedSubject == "Hi there")
+        #expect(preview.unresolvedFields.isEmpty)
+        #expect(preview.isSendable)
+    }
+
+    @Test("Fallback is used when the field is empty or whitespace")
+    func fallbackForEmptyField() {
+        let template = EmailTemplate(subject: "Hi {{Name|friend}}", body: "x")
+        let preview = TemplateMergeEngine.merge(template: template, with: contact(["Name": "   "]))
+        #expect(preview.resolvedSubject == "Hi friend")
+        #expect(preview.unresolvedFields.isEmpty)
+    }
+
+    @Test("A real value always wins over the fallback")
+    func valueBeatsFallback() {
+        let template = EmailTemplate(subject: "Hi {{Name|there}}", body: "x")
+        let preview = TemplateMergeEngine.merge(template: template, with: contact(["Name": "Ada"]))
+        #expect(preview.resolvedSubject == "Hi Ada")
+    }
+
+    @Test("An explicitly empty fallback renders nothing without blocking")
+    func emptyFallbackAllowsBlank() {
+        let template = EmailTemplate(subject: "Hi{{ Honorific|}} {{Name}}", body: "x")
+        let preview = TemplateMergeEngine.merge(template: template, with: contact(["Name": "Ada"]))
+        #expect(preview.resolvedSubject == "Hi Ada")
+        #expect(preview.unresolvedFields.isEmpty)
+    }
+
+    @Test("Without a fallback a missing field still blocks — opt-in only")
+    func noFallbackStillBlocks() {
+        let template = EmailTemplate(subject: "Hi {{Name}}", body: "x")
+        let preview = TemplateMergeEngine.merge(template: template, with: contact([:]))
+        #expect(preview.unresolvedFields == ["Name"])
+        #expect(!preview.isSendable)
+    }
+
+    @Test("Fallback syntax tolerates whitespace around name and fallback")
+    func fallbackWhitespaceTolerant() {
+        let template = EmailTemplate(subject: "{{ first name | there }}", body: "x")
+        let preview = TemplateMergeEngine.merge(template: template,
+                                                with: contact(["First Name": "Ada"]))
+        #expect(preview.resolvedSubject == "Ada")
+        let missing = TemplateMergeEngine.merge(template: template, with: contact([:]))
+        #expect(missing.resolvedSubject == "there")
+    }
+
+    @Test("Fallback text is HTML-escaped in HTML bodies, like field values")
+    func fallbackHTMLEscaped() {
+        let template = EmailTemplate(subject: "x", body: "<p>{{Name|friend & colleague}}</p>",
+                                     format: .html)
+        let preview = TemplateMergeEngine.merge(template: template, with: contact([:]))
+        #expect(preview.resolvedBody == "<p>friend &amp; colleague</p>")
+    }
+
+    @Test("Pipes separate filters; a bare first segment is the fallback")
+    func pipesSeparateFilters() {
+        let token = EmailTemplate.token(fromRawPlaceholder: "Name|there|upper")
+        #expect(token.name == "Name")
+        #expect(token.fallback == "there")             // first bare segment → default
+        #expect(token.transforms == [.upper])          // recognized filter
+    }
+
+    @Test("fieldsRequiringData exempts fields whose every use has a fallback")
+    func fieldsRequiringData() {
+        let template = EmailTemplate(subject: "{{Name|there}} {{Company}}",
+                                     body: "{{Name}} {{Project|the project}}")
+        // Name appears once WITH and once WITHOUT a fallback → still required.
+        #expect(template.fieldsRequiringData == ["Name", "Company"])
+        // referencedFields keeps listing every base name.
+        #expect(template.referencedFields == ["Name", "Company", "Project"])
+    }
+
+    // MARK: - Duplicate detection
+
+    @Test("mergeAll flags later duplicate addresses and keeps the first sendable")
+    func duplicatesFlaggedByMergeAll() {
+        let template = EmailTemplate(subject: "Hi {{Name}}", body: "x")
+        let contacts = [
+            Contact(fields: ["Name": "Ada"], email: "dup@x.com"),
+            Contact(fields: ["Name": "Bo"], email: "unique@x.com"),
+            Contact(fields: ["Name": "Cy"], email: "DUP@x.com "), // same as row 0, cased/spaced
+        ]
+        let previews = TemplateMergeEngine.mergeAll(template: template, contacts: contacts)
+        #expect(previews[0].isDuplicate == false)
+        #expect(previews[0].isSendable)          // first occurrence sends
+        #expect(previews[1].isDuplicate == false)
+        #expect(previews[2].isDuplicate)          // later repeat held back
+        #expect(!previews[2].isSendable)
+        #expect(previews[2].blockingReason?.contains("Duplicate") == true)
+    }
+
+    @Test("A single-merged preview is never a duplicate")
+    func singleMergeNeverDuplicate() {
+        let template = EmailTemplate(subject: "Hi", body: "x")
+        let preview = TemplateMergeEngine.merge(template: template, with: contact([:]))
+        #expect(!preview.isDuplicate)
+    }
+
+    // MARK: - Per-recipient attachments
+
+    @Test("A resolvable per-recipient attachment is carried and doesn't block")
+    func attachmentPresent() {
+        let template = EmailTemplate(subject: "Hi", body: "x")
+        let preview = TemplateMergeEngine.merge(template: template, with: contact([:]),
+                                                attachments: (["/tmp/a.pdf"], []))
+        #expect(preview.attachmentPaths == ["/tmp/a.pdf"])
+        #expect(preview.isSendable)
+    }
+
+    @Test("A missing per-recipient attachment blocks the row with a reason")
+    func missingAttachmentBlocks() {
+        let template = EmailTemplate(subject: "Hi", body: "x")
+        let preview = TemplateMergeEngine.merge(template: template, with: contact([:]),
+                                                attachments: (["/tmp/gone.pdf"], ["/tmp/gone.pdf"]))
+        #expect(!preview.isSendable)
+        #expect(preview.blockingReason?.contains("gone.pdf") == true)
+    }
 }

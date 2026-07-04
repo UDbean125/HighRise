@@ -27,11 +27,14 @@ fi
 SRC=(
   HighRise/Models/Contact.swift
   HighRise/Models/RecipientTable.swift
+  HighRise/Models/TemplateVariant.swift
   HighRise/Models/EmailTemplate.swift
   HighRise/Models/MergePreview.swift
   HighRise/Models/MailClient.swift
   HighRise/Services/EmailValidator.swift
   HighRise/Services/CSVParser.swift
+  HighRise/Services/DuplicateDetector.swift
+  HighRise/Services/MergeValueFormatter.swift
   HighRise/Services/TemplateMergeEngine.swift
   HighRise/Services/AppleScriptBuilder.swift
   Tools/dry-run/main.swift

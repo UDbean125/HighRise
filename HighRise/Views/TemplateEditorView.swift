@@ -12,10 +12,17 @@ struct TemplateEditorView: View {
     private enum Field: Hashable { case subject, body }
     @FocusState private var focus: Field?
 
+    @State private var showSaveDialog = false
+    @State private var newTemplateName = ""
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                header
+                HStack(alignment: .top) {
+                    header
+                    Spacer()
+                    templateLibraryMenu
+                }
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Subject").font(.headline)
@@ -44,6 +51,7 @@ struct TemplateEditorView: View {
                 }
 
                 fieldPalette
+                variantsEditor
                 fieldsSummary
             }
             .padding(24)
@@ -52,10 +60,46 @@ struct TemplateEditorView: View {
         }
     }
 
+    private var templateLibraryMenu: some View {
+        Menu {
+            Button {
+                newTemplateName = ""
+                showSaveDialog = true
+            } label: {
+                Label("Save current template…", systemImage: "square.and.arrow.down")
+            }
+            if !coordinator.savedTemplates.isEmpty {
+                Divider()
+                Section("Load") {
+                    ForEach(coordinator.savedTemplates.sorted(by: { $0.savedAt > $1.savedAt })) { saved in
+                        Button(saved.name) { coordinator.loadTemplate(saved) }
+                    }
+                }
+                Divider()
+                Menu("Delete") {
+                    ForEach(coordinator.savedTemplates.sorted(by: { $0.savedAt > $1.savedAt })) { saved in
+                        Button(saved.name, role: .destructive) { coordinator.deleteTemplate(saved) }
+                    }
+                }
+            }
+        } label: {
+            Label("Templates", systemImage: "tray.full")
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .alert("Save template", isPresented: $showSaveDialog) {
+            TextField("Template name", text: $newTemplateName)
+            Button("Save") { coordinator.saveCurrentTemplate(as: newTemplateName) }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Saves the subject, body, format, and any variants under a name you can reload later.")
+        }
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Compose your template").font(.title2).bold()
-            Text("Write the email once. Wrap any field from your contact list in double braces — like {{First Name}} or {{Company}} — and HighRise fills it in for each recipient. You can use as many custom fields as your list has columns.")
+            Text("Write the email once. Wrap any field from your contact list in double braces — like {{First Name}} or {{Company}} — and HighRise fills it in for each recipient. Add a fallback after a pipe — {{First Name|there}} — for rows with no value, and format with filters like {{Amount|currency:USD}}, {{Renewal Date|date:MMMM d, yyyy}}, or {{Name|fixcaps}} to fix ALL-CAPS.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -129,6 +173,72 @@ struct TemplateEditorView: View {
         guard let last = existing.last else { return token }
         let needsSpace = !last.isWhitespace && last != "\n"
         return existing + (needsSpace ? " " : "") + token
+    }
+
+    // MARK: - Conditional variants
+
+    private var variantsEditor: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Send a different subject/body to recipients matching a rule. The first matching variant wins; everyone else gets the template above.")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                ForEach($coordinator.template.variants) { $variant in
+                    variantCard($variant)
+                }
+
+                Button {
+                    coordinator.template.variants.append(TemplateVariant())
+                } label: {
+                    Label("Add a variant", systemImage: "plus.circle")
+                }
+            }
+            .padding(.top, 8)
+        } label: {
+            Label("Conditional variants (\(coordinator.template.variants.count))", systemImage: "arrow.triangle.branch")
+                .font(.headline)
+        }
+    }
+
+    private func variantCard(_ variant: Binding<TemplateVariant>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text("If").foregroundStyle(.secondary)
+                fieldMenu(variant.rule.field)
+                Picker("", selection: variant.rule.predicate) {
+                    ForEach(RoutingRule.Predicate.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .labelsHidden().frame(maxWidth: 150)
+                if variant.wrappedValue.rule.predicate.needsValue {
+                    TextField("value", text: variant.rule.value)
+                        .textFieldStyle(.roundedBorder).frame(maxWidth: 160)
+                }
+                Spacer()
+                Button(role: .destructive) {
+                    coordinator.template.variants.removeAll { $0.id == variant.wrappedValue.id }
+                } label: { Image(systemName: "trash") }
+                .buttonStyle(.borderless)
+            }
+            TextField("Variant subject", text: variant.subject)
+                .textFieldStyle(.roundedBorder)
+            TextEditor(text: variant.body)
+                .font(.body).frame(minHeight: 80)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+        }
+        .padding(10)
+        .background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func fieldMenu(_ selection: Binding<String>) -> some View {
+        Menu {
+            ForEach(coordinator.importedHeaders, id: \.self) { header in
+                Button(header) { selection.wrappedValue = header }
+            }
+        } label: {
+            Text(selection.wrappedValue.isEmpty ? "field" : selection.wrappedValue)
+                .frame(maxWidth: 140)
+        }
     }
 
     @ViewBuilder

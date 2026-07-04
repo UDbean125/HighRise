@@ -32,7 +32,24 @@ Wrap any column name in double braces: `Hi {{FirstName}}, I wanted to reach out
 about {{Company}}…`. Matching is case- and whitespace-insensitive (`{{ company }}`
 ≡ `{{Company}}`). If a recipient is missing a field the template uses, that
 message is blocked from sending rather than going out with a blank or a literal
-`{{…}}`. In HTML templates, field values are HTML-escaped automatically.
+`{{…}}`.
+
+**Filters.** After a pipe you can add filters, chained left to right:
+
+- **Fallback** for empty values: `{{FirstName|there}}` uses "there" when the row
+  has no value (and `{{FirstName|}}` renders nothing) instead of blocking. Written
+  in full this is the `default:` filter — `{{FirstName|default:there}}`.
+- **Dates**: `{{Renewal Date|date:MMMM d, yyyy}}` reformats ISO, common written
+  dates, and even Excel's raw serial numbers (the notorious `46195`).
+- **Currency / numbers**: `{{Amount|currency:USD}}` → `$24,500.00`;
+  `{{Seats|number}}` groups digits.
+- **Casing**: `upper`, `lower`, `capitalize`, and `fixcaps` (repairs ALL-CAPS
+  names like `JORDAN AVERY` → `Jordan Avery`); also `trim`.
+
+Filters combine: `{{First Name|there|capitalize}}` falls back to "There". A value
+that can't be parsed (e.g. a non-date in a `date:` filter) passes through
+unchanged. In HTML templates, substituted values — field data, fallbacks, and
+formatted output alike — are HTML-escaped automatically.
 
 ---
 
@@ -153,6 +170,18 @@ security boundary.
 
 - **Apple Mail + HTML:** Mail's AppleScript only reliably sets a plain-text body.
   HTML is full-fidelity in Outlook; the UI warns when Mail + HTML are combined.
-- **Excel:** reads the first worksheet only.
+  An **experimental** workaround exports one `.eml` draft per recipient (full
+  HTML) that opens in Mail on double-click — verify on your Mac before relying
+  on it.
+- **Merge to PDF:** generate one personalized PDF per recipient (optionally
+  password-protected) for invoices/letters — saved locally, sent by nobody.
+- **Excel:** a multi-sheet workbook shows a worksheet picker (defaulting to the
+  first tab in the workbook's declared order); one sheet is imported at a time.
 - **Word/PDF:** address scraping is best-effort; always review before sending.
-- **Attachments** and an **undo/scheduled-send** window are not yet implemented.
+- **Attachments:** attach the same file(s) to every message (with a pre-send
+  size warning), and/or a per-recipient file via an "attachment" column (a
+  missing file holds that row back). Large files may still bounce.
+- **Scheduled send:** a run can be scheduled for a future time, but scheduling
+  runs *inside the app* (Apple Mail/Outlook expose no scriptable Send Later), so
+  the Mac must be awake and HighRise open when it fires. An **undo** window is
+  not yet implemented.

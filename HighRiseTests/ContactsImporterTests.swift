@@ -26,3 +26,27 @@ struct ContactsImporterTests {
         #expect(message.contains("Contacts"))
     }
 }
+
+/// Test-send validation guards that resolve before any mail client is touched,
+/// so they're safe to exercise without launching Mail/Outlook.
+@MainActor
+struct TestSendGuardTests {
+
+    @Test("A malformed test address is rejected with actionable text")
+    func rejectsBadAddress() {
+        let coordinator = HighRiseCoordinator()
+        coordinator.testRecipient = "not-an-email"
+        coordinator.sendTestToSelf()
+        #expect(coordinator.testSendResult?.succeeded == false)
+        #expect(coordinator.testSendResult?.message.contains("valid") == true)
+    }
+
+    @Test("A valid address with nothing ready to send is reported, not attempted")
+    func requiresASendableSample() {
+        let coordinator = HighRiseCoordinator()
+        coordinator.testRecipient = "me@example.com"   // valid, but no contacts loaded
+        coordinator.sendTestToSelf()
+        #expect(coordinator.testSendResult?.succeeded == false)
+        #expect(coordinator.testSendResult?.message.contains("ready") == true)
+    }
+}

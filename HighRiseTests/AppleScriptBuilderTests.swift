@@ -73,6 +73,95 @@ struct AppleScriptBuilderTests {
         #expect(send.contains("send newMessage"))
     }
 
+    @Test("Apple Mail emits cc and bcc recipients, escaped, only when present")
+    func appleMailCCBCC() {
+        let plain = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                    subject: "S", body: "B", isHTML: false)
+        let noExtras = AppleScriptBuilder.script(for: plain, client: .appleMail, mode: .draft)
+        #expect(!noExtras.contains("cc recipient"))
+        #expect(!noExtras.contains("bcc recipient"))
+
+        let withExtras = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                         subject: "S", body: "B", isHTML: false,
+                                         cc: ["boss@acme.com"], bcc: ["me@acme.com"])
+        let script = AppleScriptBuilder.script(for: withExtras, client: .appleMail, mode: .draft)
+        #expect(script.contains("make new cc recipient at end of cc recipients with properties {address:\"boss@acme.com\"}"))
+        #expect(script.contains("make new bcc recipient at end of bcc recipients with properties {address:\"me@acme.com\"}"))
+    }
+
+    @Test("Outlook emits to, cc and bcc recipients")
+    func outlookCCBCC() {
+        let msg = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                  subject: "S", body: "B", isHTML: false,
+                                  cc: ["boss@acme.com"], bcc: ["me@acme.com"])
+        let script = AppleScriptBuilder.script(for: msg, client: .outlook, mode: .draft)
+        #expect(script.contains("make new to recipient at newMessage with properties {email address:{address:\"a@b.com\"}}"))
+        #expect(script.contains("make new cc recipient at newMessage with properties {email address:{address:\"boss@acme.com\"}}"))
+        #expect(script.contains("make new bcc recipient at newMessage with properties {email address:{address:\"me@acme.com\"}}"))
+    }
+
+    @Test("A crafted cc address stays inside its string literal")
+    func ccAddressEscaped() {
+        let evil = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                   subject: "S", body: "B", isHTML: false,
+                                   cc: ["\"} & (do shell script \"boom\") & {\""])
+        let script = AppleScriptBuilder.script(for: evil, client: .appleMail, mode: .draft)
+        // The payload's quotes must be backslash-escaped, never bare.
+        #expect(script.contains("\\\""))
+        #expect(!script.contains("do shell script \"boom\""))
+    }
+
+    @Test("Apple Mail sets the sender when a From identity is given")
+    func appleMailSender() {
+        let withSender = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                         subject: "S", body: "B", isHTML: false,
+                                         sender: "Jordan <jordan@work.com>")
+        let script = AppleScriptBuilder.script(for: withSender, client: .appleMail, mode: .draft)
+        #expect(script.contains("set sender of newMessage to \"Jordan <jordan@work.com>\""))
+
+        let noSender = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                       subject: "S", body: "B", isHTML: false)
+        #expect(!AppleScriptBuilder.script(for: noSender, client: .appleMail, mode: .draft).contains("set sender"))
+    }
+
+    @Test("Apple Mail attaches each file via an escaped POSIX path")
+    func appleMailAttachments() {
+        let msg = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                  subject: "S", body: "B", isHTML: false,
+                                  attachmentPaths: ["/Users/me/Q3 Report.pdf"])
+        let script = AppleScriptBuilder.script(for: msg, client: .appleMail, mode: .draft)
+        #expect(script.contains("make new attachment with properties {file name:(POSIX file \"/Users/me/Q3 Report.pdf\")} at after the last paragraph"))
+    }
+
+    @Test("Outlook attaches each file via an escaped POSIX path")
+    func outlookAttachments() {
+        let msg = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                  subject: "S", body: "B", isHTML: false,
+                                  attachmentPaths: ["/Users/me/invoice.pdf"])
+        let script = AppleScriptBuilder.script(for: msg, client: .outlook, mode: .draft)
+        #expect(script.contains("make new attachment at newMessage with properties {file:(POSIX file \"/Users/me/invoice.pdf\")}"))
+    }
+
+    @Test("No attachment verbs are emitted when there are none")
+    func noAttachmentsNoVerb() {
+        let msg = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                  subject: "S", body: "B", isHTML: false)
+        let mail = AppleScriptBuilder.script(for: msg, client: .appleMail, mode: .draft)
+        let outlook = AppleScriptBuilder.script(for: msg, client: .outlook, mode: .draft)
+        #expect(!mail.contains("make new attachment"))
+        #expect(!outlook.contains("make new attachment"))
+    }
+
+    @Test("A crafted attachment path stays inside its POSIX file literal")
+    func attachmentPathEscaped() {
+        let msg = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                  subject: "S", body: "B", isHTML: false,
+                                  attachmentPaths: ["/tmp/\" & (do shell script \"boom\") & \""])
+        let script = AppleScriptBuilder.script(for: msg, client: .appleMail, mode: .draft)
+        #expect(!script.contains("do shell script \"boom\""))
+        #expect(script.contains("\\\""))
+    }
+
     @Test("Outlook selects HTML vs plain-text body property by format")
     func outlookBodyProperty() {
         let html = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",

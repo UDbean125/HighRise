@@ -30,6 +30,92 @@ struct XLSXReaderTests {
     func columnIndex(ref: String, expected: Int) {
         #expect(XLSXReader.columnIndex(fromCellRef: ref) == expected)
     }
+
+    // MARK: - Worksheet discovery (multi-sheet picker + first-sheet bug fix)
+
+    @Test("Workbook sheets are read in declared tab order, not filename order")
+    func workbookOrder() {
+        // Tab order Leads → Archive maps to sheet3.xml → sheet1.xml: filename
+        // numbering is NOT the tab order, which is the bug the picker fixes.
+        let workbook = """
+        <?xml version="1.0"?>
+        <workbook xmlns:r="http://.../relationships">
+          <sheets>
+            <sheet name="Leads" sheetId="3" r:id="rId5"/>
+            <sheet name="Archive" sheetId="1" r:id="rId3"/>
+          </sheets>
+        </workbook>
+        """
+        let sheets = XLSXReader.WorkbookParser_forTesting(Data(workbook.utf8))
+        #expect(sheets.map(\.name) == ["Leads", "Archive"])
+        #expect(sheets.map(\.relationshipID) == ["rId5", "rId3"])
+    }
+
+    @Test("Hidden and very-hidden sheets are marked non-visible")
+    func workbookHiddenState() {
+        let workbook = """
+        <workbook xmlns:r="http://x">
+          <sheets>
+            <sheet name="Visible" r:id="rId1"/>
+            <sheet name="Gone" state="hidden" r:id="rId2"/>
+            <sheet name="Deep" state="veryHidden" r:id="rId3"/>
+          </sheets>
+        </workbook>
+        """
+        let sheets = XLSXReader.WorkbookParser_forTesting(Data(workbook.utf8))
+        #expect(sheets.first(where: { $0.name == "Visible" })?.state == "")
+        #expect(sheets.first(where: { $0.name == "Gone" })?.state == "hidden")
+        #expect(sheets.first(where: { $0.name == "Deep" })?.state == "veryhidden")
+    }
+
+    @Test("Relationships map ids to worksheet part targets")
+    func relationships() {
+        let rels = """
+        <Relationships xmlns="http://.../relationships">
+          <Relationship Id="rId3" Type="http://.../worksheet" Target="worksheets/sheet1.xml"/>
+          <Relationship Id="rId5" Type="http://.../worksheet" Target="worksheets/sheet3.xml"/>
+        </Relationships>
+        """
+        let map = XLSXReader.RelationshipsParser_forTesting(Data(rels.utf8))
+        #expect(map["rId3"] == "worksheets/sheet1.xml")
+        #expect(map["rId5"] == "worksheets/sheet3.xml")
+    }
+}
+
+struct DuplicateDetectorTests {
+    @Test("Returns every occurrence after the first, case/space-insensitively")
+    func findsLaterDuplicates() {
+        let contacts = [
+            Contact(fields: [:], email: "a@x.com"),
+            Contact(fields: [:], email: "b@x.com"),
+            Contact(fields: [:], email: "A@X.com"),   // dup of 0
+            Contact(fields: [:], email: " b@x.com "),  // dup of 1
+        ]
+        let dupes = DuplicateDetector.duplicateIDs(in: contacts)
+        #expect(dupes.count == 2)
+        #expect(dupes.contains(contacts[2].id))
+        #expect(dupes.contains(contacts[3].id))
+        #expect(!dupes.contains(contacts[0].id)) // first kept
+        #expect(!dupes.contains(contacts[1].id))
+    }
+
+    @Test("No duplicates in a clean list")
+    func noneWhenUnique() {
+        let contacts = [
+            Contact(fields: [:], email: "a@x.com"),
+            Contact(fields: [:], email: "b@x.com"),
+        ]
+        #expect(DuplicateDetector.duplicateIDs(in: contacts).isEmpty)
+    }
+
+    @Test("Blank addresses are ignored, not treated as duplicates of each other")
+    func blanksIgnored() {
+        let contacts = [
+            Contact(fields: [:], email: ""),
+            Contact(fields: [:], email: "   "),
+        ]
+        #expect(DuplicateDetector.duplicateIDs(in: contacts).isEmpty)
+    }
 }
 
 struct LooseContactExtractorTests {

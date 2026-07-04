@@ -43,11 +43,20 @@ struct ReviewView: View {
     private var countsBanner: some View {
         let sendable = coordinator.sendablePreviews.count
         let blocked = coordinator.blockedPreviews.count
+        let duplicates = coordinator.duplicateCount
         return VStack(alignment: .leading, spacing: 4) {
             Label("\(sendable) ready to send", systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green).font(.callout)
             if blocked > 0 {
                 Label("\(blocked) excluded (missing data or bad address)", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange).font(.callout)
+            }
+            if duplicates > 0 {
+                Label("\(duplicates) duplicate\(duplicates == 1 ? "" : "s") held back", systemImage: "person.2.slash")
+                    .foregroundStyle(.orange).font(.callout)
+            }
+            if coordinator.suppressedCount > 0 {
+                Label("\(coordinator.suppressedCount) on your do-not-contact list", systemImage: "nosign")
                     .foregroundStyle(.orange).font(.callout)
             }
         }
@@ -59,11 +68,23 @@ struct ReviewView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if let reason = preview.blockingReason {
-                        Label(reason, systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                            .padding(10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label(reason, systemImage: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            if let suggestion = coordinator.nameSuggestion(for: preview) {
+                                Button {
+                                    coordinator.fillField(suggestion.field, with: suggestion.name,
+                                                          forContact: preview.contact.id)
+                                } label: {
+                                    Label("Use “\(suggestion.name)” for \(suggestion.field)",
+                                          systemImage: "wand.and.stars")
+                                }
+                                .controlSize(.small)
+                            }
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
                     }
 
                     field("To", value: "\(preview.contact.displayName) <\(preview.contact.email)>")

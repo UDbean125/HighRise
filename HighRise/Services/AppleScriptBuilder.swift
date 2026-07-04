@@ -8,6 +8,17 @@ struct ComposedMessage {
     let body: String
     /// When true, `body` is HTML markup; when false, plain text.
     let isHTML: Bool
+    /// Extra visible (CC) and hidden (BCC) recipients. Already resolved and
+    /// validated by the caller; the builder only escapes and emits them.
+    var cc: [String] = []
+    var bcc: [String] = []
+    /// POSIX paths of files to attach to every message. Existence is checked by
+    /// the caller before the run; the builder only escapes and emits them.
+    var attachmentPaths: [String] = []
+    /// The From identity for Apple Mail (e.g. `Jordan <jordan@work.com>`), which
+    /// must match a configured Mail account. Nil uses the default account.
+    /// Ignored for Outlook, which sends from its own default account.
+    var sender: String? = nil
 }
 
 /// Builds the AppleScript that drives Apple Mail / Outlook for a single message.
@@ -70,11 +81,27 @@ enum AppleScriptBuilder {
         // setter. HTML markup is therefore sent as-is into `content`, which
         // Mail treats as text — the UI warns the user about this so the
         // limitation is a known choice, not a silent surprise.
+        let ccLines = m.cc.map {
+            "        make new cc recipient at end of cc recipients with properties {address:\(stringLiteral($0))}"
+        }
+        let bccLines = m.bcc.map {
+            "        make new bcc recipient at end of bcc recipients with properties {address:\(stringLiteral($0))}"
+        }
+        // Attachments are placed after the last paragraph of the content — the
+        // documented-robust location for Mail, which attaches at a text position.
+        let attachmentLines = m.attachmentPaths.map {
+            "        make new attachment with properties {file name:(POSIX file \(stringLiteral($0)))} at after the last paragraph"
+        }
+        let extras = ccLines + bccLines + attachmentLines
+        let recipientBlock = extras.isEmpty ? "" : "\n" + extras.joined(separator: "\n")
+        // `sender` picks the From account; it must match a configured Mail account.
+        let senderLine = m.sender.map { "\n    set sender of newMessage to \(stringLiteral($0))" } ?? ""
+
         return """
         tell application "Mail"
-            set newMessage to make new outgoing message with properties {subject:\(subject), content:\(body), visible:false}
+            set newMessage to make new outgoing message with properties {subject:\(subject), content:\(body), visible:false}\(senderLine)
             tell newMessage
-                make new to recipient at end of to recipients with properties {address:\(address)}
+                make new to recipient at end of to recipients with properties {address:\(address)}\(recipientBlock)
             end tell
             \(finalAction)
         end tell
@@ -95,10 +122,22 @@ enum AppleScriptBuilder {
         // body (`plain text content`), so HTML is full-fidelity here.
         let bodyProperty = m.isHTML ? "content" : "plain text content"
 
+        let ccLines = m.cc.map {
+            "    make new cc recipient at newMessage with properties {email address:{address:\(stringLiteral($0))}}"
+        }
+        let bccLines = m.bcc.map {
+            "    make new bcc recipient at newMessage with properties {email address:{address:\(stringLiteral($0))}}"
+        }
+        let attachmentLines = m.attachmentPaths.map {
+            "    make new attachment at newMessage with properties {file:(POSIX file \(stringLiteral($0)))}"
+        }
+        let extras = ccLines + bccLines + attachmentLines
+        let recipientBlock = extras.isEmpty ? "" : "\n" + extras.joined(separator: "\n")
+
         return """
         tell application "Microsoft Outlook"
             set newMessage to make new outgoing message with properties {subject:\(subject), \(bodyProperty):\(body)}
-            make new recipient at newMessage with properties {email address:{address:\(address)}}
+            make new to recipient at newMessage with properties {email address:{address:\(address)}}\(recipientBlock)
             \(finalAction)
         end tell
         """

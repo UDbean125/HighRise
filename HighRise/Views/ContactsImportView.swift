@@ -9,6 +9,7 @@ struct ContactsImportView: View {
     @State private var isImporterPresented = false
     @State private var pastedText = ""
     @State private var showPaste = false
+    @State private var showDoNotContact = false
 
     var body: some View {
         ScrollView {
@@ -22,8 +23,13 @@ struct ContactsImportView: View {
                         .foregroundStyle(.red)
                 }
 
+                if !coordinator.availableWorksheets.isEmpty {
+                    worksheetPicker
+                }
+
                 if !coordinator.contacts.isEmpty {
                     emailColumnPicker
+                    attachmentColumnPicker
                     summaryAndPreview
                 }
             }
@@ -131,6 +137,16 @@ struct ContactsImportView: View {
             Button("Download CSV Template") { saveTemplate() }
                 .buttonStyle(.link)
             Spacer()
+            Button {
+                showDoNotContact = true
+            } label: {
+                Label("Do-Not-Contact List", systemImage: "nosign")
+            }
+            .buttonStyle(.link)
+            .help("Manage addresses and domains that are always skipped")
+        }
+        .sheet(isPresented: $showDoNotContact) {
+            DoNotContactView().environmentObject(coordinator)
         }
     }
 
@@ -149,6 +165,25 @@ struct ContactsImportView: View {
         }
     }
 
+    private var worksheetPicker: some View {
+        HStack {
+            Text("Worksheet").font(.headline)
+            Picker("Worksheet", selection: Binding(
+                get: { coordinator.selectedWorksheet ?? "" },
+                set: { if !$0.isEmpty { coordinator.selectWorksheet($0) } }
+            )) {
+                ForEach(coordinator.availableWorksheets, id: \.name) { sheet in
+                    Text(sheet.name).tag(sheet.name)
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 240)
+            Text("This workbook has \(coordinator.availableWorksheets.count) sheets.")
+                .font(.callout).foregroundStyle(.secondary)
+            Spacer()
+        }
+    }
+
     private var emailColumnPicker: some View {
         HStack {
             Text("Email column").font(.headline)
@@ -162,6 +197,26 @@ struct ContactsImportView: View {
             }
             .labelsHidden()
             .frame(maxWidth: 240)
+            Spacer()
+        }
+    }
+
+    private var attachmentColumnPicker: some View {
+        HStack {
+            Text("Attachment column").font(.headline)
+            Picker("Attachment column", selection: Binding(
+                get: { coordinator.attachmentColumn ?? "" },
+                set: { coordinator.attachmentColumn = $0.isEmpty ? nil : $0 }
+            )) {
+                Text("None").tag("")
+                ForEach(coordinator.importedHeaders, id: \.self) { header in
+                    Text(header).tag(header)
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 240)
+            Text("Optional — a per-recipient file path (use “;” for several).")
+                .font(.callout).foregroundStyle(.secondary)
             Spacer()
         }
     }
