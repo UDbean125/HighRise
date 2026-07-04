@@ -69,11 +69,21 @@ final class HighRiseCoordinator: ObservableObject {
     private var parsedTable: RecipientTable?
     private var sendTask: Task<Void, Never>?
 
+    /// The on-device do-not-contact list. Mutations are mirrored into
+    /// `suppressionEntries` so SwiftUI re-renders and `previews` re-evaluates.
+    private let doNotContact = DoNotContactStore()
+    @Published private(set) var suppressionEntries: [SuppressionEntry] = []
+
+    init() {
+        suppressionEntries = doNotContact.entries
+    }
+
     // MARK: - Derived state
 
     /// Live previews of the merged messages for every imported contact.
     var previews: [MergePreview] {
-        TemplateMergeEngine.mergeAll(template: template, contacts: contacts)
+        TemplateMergeEngine.mergeAll(template: template, contacts: contacts,
+                                     isSuppressed: { self.doNotContact.isSuppressed($0.email) })
     }
 
     var sendablePreviews: [MergePreview] { previews.filter(\.isSendable) }
@@ -83,6 +93,33 @@ final class HighRiseCoordinator: ObservableObject {
     /// address — surfaced as a distinct warning since it's a list-hygiene issue,
     /// not a per-row data problem.
     var duplicateCount: Int { previews.lazy.filter(\.isDuplicate).count }
+
+    /// How many rows are held back because they're on the do-not-contact list.
+    var suppressedCount: Int { previews.lazy.filter(\.isSuppressed).count }
+
+    // MARK: - Do-not-contact list
+
+    /// Adds an address to the do-not-contact list. Returns false on invalid or
+    /// already-present input, so the UI can flag it.
+    @discardableResult
+    func suppressAddress(_ address: String, note: String? = nil) -> Bool {
+        let added = doNotContact.addAddress(address, note: note)
+        if added { suppressionEntries = doNotContact.entries }
+        return added
+    }
+
+    /// Adds a whole domain (e.g. `acme.com`) to the do-not-contact list.
+    @discardableResult
+    func suppressDomain(_ domain: String, note: String? = nil) -> Bool {
+        let added = doNotContact.addDomain(domain, note: note)
+        if added { suppressionEntries = doNotContact.entries }
+        return added
+    }
+
+    func removeSuppression(_ entry: SuppressionEntry) {
+        doNotContact.remove(entry)
+        suppressionEntries = doNotContact.entries
+    }
 
     /// Template fields that none of the imported columns can satisfy — surfaced
     /// in compose so the user notices a typo'd `{{Compnay}}` before review.

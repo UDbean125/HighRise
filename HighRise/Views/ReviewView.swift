@@ -55,6 +55,10 @@ struct ReviewView: View {
                 Label("\(duplicates) duplicate\(duplicates == 1 ? "" : "s") held back", systemImage: "person.2.slash")
                     .foregroundStyle(.orange).font(.callout)
             }
+            if coordinator.suppressedCount > 0 {
+                Label("\(coordinator.suppressedCount) on your do-not-contact list", systemImage: "nosign")
+                    .foregroundStyle(.orange).font(.callout)
+            }
         }
     }
 

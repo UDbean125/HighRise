@@ -17,7 +17,7 @@ enum TemplateMergeEngine {
     /// `{{…}}` ever reaches a recipient) and reported on the preview so the
     /// review screen can block the send.
     static func merge(template: EmailTemplate, with contact: Contact,
-                      isDuplicate: Bool = false) -> MergePreview {
+                      isDuplicate: Bool = false, isSuppressed: Bool = false) -> MergePreview {
         var unresolved: [String] = []
         var seenUnresolved = Set<String>()
 
@@ -53,16 +53,21 @@ enum TemplateMergeEngine {
             resolvedBody: body,
             unresolvedFields: unresolved,
             hasValidEmail: EmailValidator.isValid(contact.email),
-            isDuplicate: isDuplicate
+            isDuplicate: isDuplicate,
+            isSuppressed: isSuppressed
         )
     }
 
-    /// Merges the template against every contact, preserving order and flagging
-    /// rows whose address repeats an earlier one so it isn't sent twice.
-    static func mergeAll(template: EmailTemplate, contacts: [Contact]) -> [MergePreview] {
+    /// Merges the template against every contact, preserving order, flagging
+    /// rows whose address repeats an earlier one, and marking rows the caller
+    /// deems suppressed (on the do-not-contact list) so both are held back.
+    static func mergeAll(template: EmailTemplate, contacts: [Contact],
+                         isSuppressed: (Contact) -> Bool = { _ in false }) -> [MergePreview] {
         let duplicateIDs = DuplicateDetector.duplicateIDs(in: contacts)
         return contacts.map {
-            merge(template: template, with: $0, isDuplicate: duplicateIDs.contains($0.id))
+            merge(template: template, with: $0,
+                  isDuplicate: duplicateIDs.contains($0.id),
+                  isSuppressed: isSuppressed($0))
         }
     }
 

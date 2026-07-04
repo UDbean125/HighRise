@@ -9,6 +9,7 @@ struct ContactsImportView: View {
     @State private var isImporterPresented = false
     @State private var pastedText = ""
     @State private var showPaste = false
+    @State private var showDoNotContact = false
 
     var body: some View {
         ScrollView {
@@ -135,6 +136,16 @@ struct ContactsImportView: View {
             Button("Download CSV Template") { saveTemplate() }
                 .buttonStyle(.link)
             Spacer()
+            Button {
+                showDoNotContact = true
+            } label: {
+                Label("Do-Not-Contact List", systemImage: "nosign")
+            }
+            .buttonStyle(.link)
+            .help("Manage addresses and domains that are always skipped")
+        }
+        .sheet(isPresented: $showDoNotContact) {
+            DoNotContactView().environmentObject(coordinator)
         }
     }
 

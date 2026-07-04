@@ -26,8 +26,13 @@ struct MergePreview: Identifiable {
     /// preview merged in isolation is never a duplicate.
     let isDuplicate: Bool
 
+    /// True when this row's address (or its domain) is on the do-not-contact
+    /// list. Held back silently on future merges without editing the source.
+    let isSuppressed: Bool
+
     init(id: UUID, contact: Contact, resolvedSubject: String, resolvedBody: String,
-         unresolvedFields: [String], hasValidEmail: Bool, isDuplicate: Bool = false) {
+         unresolvedFields: [String], hasValidEmail: Bool,
+         isDuplicate: Bool = false, isSuppressed: Bool = false) {
         self.id = id
         self.contact = contact
         self.resolvedSubject = resolvedSubject
@@ -35,12 +40,13 @@ struct MergePreview: Identifiable {
         self.unresolvedFields = unresolvedFields
         self.hasValidEmail = hasValidEmail
         self.isDuplicate = isDuplicate
+        self.isSuppressed = isSuppressed
     }
 
     /// A preview is safe to send only if it has a valid recipient, no leftover
-    /// placeholders, and isn't a repeat of an earlier row.
+    /// placeholders, isn't a repeat of an earlier row, and isn't suppressed.
     var isSendable: Bool {
-        hasValidEmail && unresolvedFields.isEmpty && !isDuplicate
+        hasValidEmail && unresolvedFields.isEmpty && !isDuplicate && !isSuppressed
     }
 
     var blockingReason: String? {
@@ -48,6 +54,9 @@ struct MergePreview: Identifiable {
             return contact.email.isEmpty
                 ? "No email address."
                 : "Invalid email address: \(contact.email)"
+        }
+        if isSuppressed {
+            return "On your do-not-contact list — \(contact.email) is skipped."
         }
         if !unresolvedFields.isEmpty {
             let list = unresolvedFields.joined(separator: ", ")
