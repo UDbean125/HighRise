@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 struct SendView: View {
     @EnvironmentObject private var coordinator: HighRiseCoordinator
     @State private var showConfirm = false
+    @State private var scheduleDate = Date().addingTimeInterval(3600)
 
     var body: some View {
         ScrollView {
@@ -24,6 +25,7 @@ struct SendView: View {
                 testSendRow
                 Divider()
                 actionRow
+                scheduleRow
                 if !coordinator.outcomes.isEmpty {
                     resultsList
                 }
@@ -276,6 +278,41 @@ struct SendView: View {
             if !coordinator.outcomes.isEmpty {
                 let ok = coordinator.outcomes.filter(\.isSuccess).count
                 Text("\(ok)/\(coordinator.outcomes.count) succeeded").foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var scheduleRow: some View {
+        if let fireDate = coordinator.scheduledFireDate {
+            HStack(spacing: 10) {
+                Image(systemName: "clock.badge.checkmark").foregroundStyle(.blue)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Scheduled for \(fireDate.formatted(date: .abbreviated, time: .shortened))")
+                    Text("Keep this Mac awake and HighRise open until then.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Cancel", role: .destructive) { coordinator.cancelSchedule() }
+            }
+            .padding(10)
+            .background(Color.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+        } else if !coordinator.isSending {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Or schedule it").font(.headline)
+                HStack(spacing: 8) {
+                    DatePicker("Start at", selection: $scheduleDate, in: Date()...)
+                        .labelsHidden()
+                    Button {
+                        coordinator.scheduleSend(at: scheduleDate)
+                    } label: {
+                        Label("Schedule", systemImage: "clock")
+                    }
+                    .disabled(!coordinator.canSend || scheduleDate <= Date())
+                }
+                Text("Runs on this Mac at the chosen time — it must be awake with HighRise open. Editable and cancelable until it fires.")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

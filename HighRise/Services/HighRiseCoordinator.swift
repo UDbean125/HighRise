@@ -87,6 +87,14 @@ final class HighRiseCoordinator: ObservableObject {
     private var parsedTable: RecipientTable?
     private var sendTask: Task<Void, Never>?
 
+    /// When a run is scheduled, the fire time and a frozen snapshot of the
+    /// recipients to send — so later edits don't change what was scheduled, and
+    /// the run can be canceled any time before it fires.
+    @Published private(set) var scheduledFireDate: Date?
+    private var scheduledQueue: [MergePreview] = []
+    private var scheduleTask: Task<Void, Never>?
+    var isScheduled: Bool { scheduledFireDate != nil }
+
     /// The on-device do-not-contact list. Mutations are mirrored into
     /// `suppressionEntries` so SwiftUI re-renders and `previews` re-evaluates.
     private let doNotContact = DoNotContactStore()
@@ -355,7 +363,36 @@ final class HighRiseCoordinator: ObservableObject {
 
     /// Runs the merge-and-deliver loop over every sendable preview.
     func startSending() {
+        cancelSchedule() // a manual send supersedes any pending schedule
         run(queue: sendablePreviews)
+    }
+
+    /// Schedules the current sendable recipients to be sent/drafted at `date`.
+    /// The recipient list and merged content are frozen now; client, mode, and
+    /// throttle are applied at fire time. Requires the Mac awake and the app
+    /// running — see `ScheduledSend`.
+    func scheduleSend(at date: Date) {
+        let seconds = ScheduledSend.secondsUntil(date, from: Date())
+        guard seconds > 0, !sendablePreviews.isEmpty, !isSending else { return }
+        cancelSchedule()
+        scheduledQueue = sendablePreviews
+        scheduledFireDate = date
+        Log.send.info("Scheduled \(self.scheduledQueue.count, privacy: .public) messages for a future time")
+        scheduleTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            let queue = scheduledQueue
+            scheduledFireDate = nil
+            scheduledQueue = []
+            run(queue: queue)
+        }
+    }
+
+    func cancelSchedule() {
+        scheduleTask?.cancel()
+        scheduleTask = nil
+        scheduledFireDate = nil
+        scheduledQueue = []
     }
 
     /// Re-runs only the recipients whose last attempt failed (transient errors
@@ -367,6 +404,7 @@ final class HighRiseCoordinator: ObservableObject {
             return nil
         })
         let queue = previews.filter { failedIDs.contains($0.id) && $0.isSendable }
+        cancelSchedule()
         run(queue: queue)
     }
 

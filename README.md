@@ -176,4 +176,7 @@ security boundary.
 - **Attachments:** attach the same file(s) to every message (with a pre-send
   size warning), and/or a per-recipient file via an "attachment" column (a
   missing file holds that row back). Large files may still bounce.
-- An **undo/scheduled-send** window is not yet implemented.
+- **Scheduled send:** a run can be scheduled for a future time, but scheduling
+  runs *inside the app* (Apple Mail/Outlook expose no scriptable Send Later), so
+  the Mac must be awake and HighRise open when it fires. An **undo** window is
+  not yet implemented.
