@@ -25,6 +25,13 @@ final class HighRiseCoordinator: ObservableObject {
     @Published private(set) var importSummary: String?
     @Published var importError: String?
 
+    /// For a multi-sheet `.xlsx`: the visible worksheets and which one is loaded,
+    /// so the import screen can offer a tab picker. Empty for other sources and
+    /// single-sheet workbooks.
+    @Published private(set) var availableWorksheets: [XLSXReader.Worksheet] = []
+    @Published private(set) var selectedWorksheet: String?
+    private var workbookURL: URL?
+
     @Published var selectedClient: MailClient = .appleMail
     @Published var sendMode: SendMode = .draft
 
@@ -101,6 +108,7 @@ final class HighRiseCoordinator: ObservableObject {
         contacts = []
         importedHeaders = []
         parsedTable = nil
+        clearWorkbookSelection()
         Log.csv.error("Import failed: \(message, privacy: .public)")
     }
 
@@ -118,6 +126,8 @@ final class HighRiseCoordinator: ObservableObject {
     /// Routes a dropped/chosen file to the right reader based on its extension.
     func importFile(at url: URL) {
         let ext = url.pathExtension.lowercased()
+        // Any new file supersedes a previously loaded workbook's sheet picker.
+        clearWorkbookSelection()
         do {
             switch ext {
             case "csv", "tsv", "txt":
@@ -125,8 +135,15 @@ final class HighRiseCoordinator: ObservableObject {
                 let table = try CSVParser.parse(text)
                 ingest(table, sourceLabel: url.lastPathComponent)
             case "xlsx":
+                let sheets = (try? XLSXReader.worksheets(in: url)) ?? []
                 let table = try XLSXReader.read(url)
-                ingest(table, sourceLabel: url.lastPathComponent)
+                // Only offer the picker when there's a real choice to make.
+                if sheets.count > 1 {
+                    workbookURL = url
+                    availableWorksheets = sheets
+                    selectedWorksheet = sheets.first?.name
+                }
+                ingest(table, sourceLabel: sheetSourceLabel(url, sheet: selectedWorksheet))
             case "docx", "pdf":
                 let text = try DocumentTextExtractor.extractText(from: url)
                 let table = LooseContactExtractor.table(from: text)
@@ -165,6 +182,31 @@ final class HighRiseCoordinator: ObservableObject {
         } catch {
             reportImportFailure(error.localizedDescription)
         }
+    }
+
+    /// Re-imports the loaded workbook using a different worksheet tab.
+    func selectWorksheet(_ name: String) {
+        guard let url = workbookURL, name != selectedWorksheet else { return }
+        do {
+            let table = try XLSXReader.read(url, sheetName: name)
+            selectedWorksheet = name
+            emailColumn = nil // headers may differ between sheets; re-detect
+            ingest(table, sourceLabel: sheetSourceLabel(url, sheet: name))
+        } catch {
+            reportImportFailure("Couldn't read “\(name)”: \(error.localizedDescription)")
+        }
+    }
+
+    /// A source label that names the chosen sheet, e.g. `Leads.xlsx › Q3`.
+    private func sheetSourceLabel(_ url: URL, sheet: String?) -> String {
+        guard let sheet else { return url.lastPathComponent }
+        return "\(url.lastPathComponent) › \(sheet)"
+    }
+
+    private func clearWorkbookSelection() {
+        workbookURL = nil
+        availableWorksheets = []
+        selectedWorksheet = nil
     }
 
     private func remapContacts() {
@@ -243,6 +285,7 @@ final class HighRiseCoordinator: ObservableObject {
         importError = nil
         parsedTable = nil
         emailColumn = nil
+        clearWorkbookSelection()
         outcomes = []
         sendProgress = 0
         stage = .contacts

@@ -22,6 +22,10 @@ struct ContactsImportView: View {
                         .foregroundStyle(.red)
                 }
 
+                if !coordinator.availableWorksheets.isEmpty {
+                    worksheetPicker
+                }
+
                 if !coordinator.contacts.isEmpty {
                     emailColumnPicker
                     summaryAndPreview
@@ -146,6 +150,25 @@ struct ContactsImportView: View {
             try CSVTemplateExporter.templateCSV().write(to: url, atomically: true, encoding: .utf8)
         } catch {
             coordinator.importError = "Couldn't save the template: \(error.localizedDescription)"
+        }
+    }
+
+    private var worksheetPicker: some View {
+        HStack {
+            Text("Worksheet").font(.headline)
+            Picker("Worksheet", selection: Binding(
+                get: { coordinator.selectedWorksheet ?? "" },
+                set: { if !$0.isEmpty { coordinator.selectWorksheet($0) } }
+            )) {
+                ForEach(coordinator.availableWorksheets, id: \.name) { sheet in
+                    Text(sheet.name).tag(sheet.name)
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 240)
+            Text("This workbook has \(coordinator.availableWorksheets.count) sheets.")
+                .font(.callout).foregroundStyle(.secondary)
+            Spacer()
         }
     }
 

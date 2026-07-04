@@ -157,6 +157,7 @@ security boundary.
 
 - **Apple Mail + HTML:** Mail's AppleScript only reliably sets a plain-text body.
   HTML is full-fidelity in Outlook; the UI warns when Mail + HTML are combined.
-- **Excel:** reads the first worksheet only.
+- **Excel:** a multi-sheet workbook shows a worksheet picker (defaulting to the
+  first tab in the workbook's declared order); one sheet is imported at a time.
 - **Word/PDF:** address scraping is best-effort; always review before sending.
 - **Attachments** and an **undo/scheduled-send** window are not yet implemented.
