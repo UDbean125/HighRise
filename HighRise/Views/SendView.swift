@@ -14,7 +14,7 @@ struct SendView: View {
                 clientPicker
                 modePicker
                 if coordinator.sendMode == .send {
-                    delaySlider
+                    throttleControls
                 }
                 Divider()
                 testSendRow
@@ -80,13 +80,56 @@ struct SendView: View {
         }
     }
 
-    private var delaySlider: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Pause between sends: \(coordinator.perMessageDelay, specifier: "%.1f")s").font(.headline)
-            Slider(value: $coordinator.perMessageDelay, in: 0...5, step: 0.1)
-                .frame(maxWidth: 360)
-            Text("A short gap keeps your mail client responsive and avoids tripping rate limits.")
-                .font(.callout).foregroundStyle(.secondary)
+    private var throttleControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Pause between sends: \(coordinator.throttle.baseDelay, specifier: "%.1f")s")
+                    .font(.headline)
+                Slider(value: $coordinator.throttle.baseDelay, in: 0...5, step: 0.1)
+                    .frame(maxWidth: 360)
+                Text("A short gap keeps your mail client responsive and avoids tripping rate limits.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Add up to \(coordinator.throttle.jitter, specifier: "%.1f")s of random jitter")
+                    .font(.subheadline)
+                Slider(value: $coordinator.throttle.jitter, in: 0...5, step: 0.1)
+                    .frame(maxWidth: 360)
+                Text("Varies the gap so sends don't fire on a perfectly regular clock.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 16) {
+                Stepper("Pause every \(coordinator.throttle.batchSize) messages",
+                        value: $coordinator.throttle.batchSize, in: 0...500, step: 25)
+                    .fixedSize()
+                if coordinator.throttle.batchSize > 0 {
+                    Stepper("for \(Int(coordinator.throttle.batchPause))s",
+                            value: $coordinator.throttle.batchPause, in: 0...1800, step: 30)
+                        .fixedSize()
+                }
+            }
+            if coordinator.throttle.batchSize == 0 {
+                Text("Batch pausing off — set a batch size to rest between groups on a large list.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Sending account").font(.subheadline)
+                Picker("Sending account", selection: $coordinator.sendingProvider) {
+                    ForEach(SendingProvider.allCases) { provider in
+                        Text(provider.rawValue).tag(provider)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 240)
+                if let warning = coordinator.quotaWarning {
+                    Label(warning, systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout).foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 

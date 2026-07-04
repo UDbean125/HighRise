@@ -35,9 +35,19 @@ final class HighRiseCoordinator: ObservableObject {
     @Published var selectedClient: MailClient = .appleMail
     @Published var sendMode: SendMode = .draft
 
-    /// How long to pause between messages, in seconds. A small gap keeps the
-    /// mail client responsive and avoids tripping rate limits when sending live.
-    @Published var perMessageDelay: Double = 0.4
+    /// How the live send is paced (delay, jitter, batch pauses). Keeps the mail
+    /// client responsive and avoids tripping rate limits when sending live.
+    @Published var throttle = ThrottlePolicy()
+
+    /// The user's mail provider, used only to warn when a run looks likely to
+    /// exceed its rough daily cap.
+    @Published var sendingProvider: SendingProvider = .other
+
+    /// A heads-up when the number of ready recipients exceeds the selected
+    /// provider's approximate daily limit; `nil` when within limits or unknown.
+    var quotaWarning: String? {
+        sendingProvider.quotaWarning(forRecipientCount: sendablePreviews.count)
+    }
 
     @Published private(set) var isSending = false
     @Published private(set) var sendProgress: Double = 0
@@ -274,8 +284,9 @@ final class HighRiseCoordinator: ObservableObject {
                 outcomes = collected
                 sendProgress = Double(index + 1) / Double(queue.count)
 
-                if perMessageDelay > 0 && index < queue.count - 1 {
-                    try? await Task.sleep(nanoseconds: UInt64(perMessageDelay * 1_000_000_000))
+                let delay = throttle.delayAfter(index: index, count: queue.count)
+                if delay > 0 {
+                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                 }
             }
             isSending = false
