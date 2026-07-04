@@ -55,6 +55,14 @@ final class HighRiseCoordinator: ObservableObject {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    /// The name of a Mail signature to attach (Apple Mail only), if set.
+    @Published var signatureName: String = ""
+    private var effectiveSignature: String? {
+        guard selectedClient == .appleMail else { return nil }
+        let trimmed = signatureName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     /// Files attached to every message in the run (same files for all recipients).
     @Published var attachments: [URL] = []
 
@@ -573,7 +581,8 @@ final class HighRiseCoordinator: ObservableObject {
                     cc: cc,
                     bcc: bcc,
                     attachmentPaths: allAttachments,
-                    sender: effectiveSender
+                    sender: effectiveSender,
+                    signatureName: effectiveSignature
                 )
                 let status: SendOutcome.Status
                 do {
@@ -643,7 +652,8 @@ final class HighRiseCoordinator: ObservableObject {
             body: sample.resolvedBody,
             isHTML: template.format == .html,
             attachmentPaths: attachments.map(\.path),
-            sender: effectiveSender
+            sender: effectiveSender,
+            signatureName: effectiveSignature
         )
         do {
             try sender.deliver(message, mode: sendMode)

@@ -91,6 +91,13 @@ struct SendView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 .padding(.top, 4)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Signature (optional)").font(.subheadline)
+                    TextField("signature name, e.g. Work", text: $coordinator.signatureName)
+                        .textFieldStyle(.roundedBorder).frame(maxWidth: 320)
+                    Text("Must match a signature configured in Mail. Leave blank for none.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
         }
     }

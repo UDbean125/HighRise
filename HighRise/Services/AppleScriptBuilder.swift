@@ -19,6 +19,9 @@ struct ComposedMessage {
     /// must match a configured Mail account. Nil uses the default account.
     /// Ignored for Outlook, which sends from its own default account.
     var sender: String? = nil
+    /// The name of an Apple Mail signature to attach (must match one configured
+    /// in Mail). Nil adds no signature. Ignored for Outlook.
+    var signatureName: String? = nil
 }
 
 /// Builds the AppleScript that drives Apple Mail / Outlook for a single message.
@@ -96,10 +99,14 @@ enum AppleScriptBuilder {
         let recipientBlock = extras.isEmpty ? "" : "\n" + extras.joined(separator: "\n")
         // `sender` picks the From account; it must match a configured Mail account.
         let senderLine = m.sender.map { "\n    set sender of newMessage to \(stringLiteral($0))" } ?? ""
+        // `message signature` references a configured signature by name.
+        let signatureLine = m.signatureName.map {
+            "\n    set message signature of newMessage to signature \(stringLiteral($0))"
+        } ?? ""
 
         return """
         tell application "Mail"
-            set newMessage to make new outgoing message with properties {subject:\(subject), content:\(body), visible:false}\(senderLine)
+            set newMessage to make new outgoing message with properties {subject:\(subject), content:\(body), visible:false}\(senderLine)\(signatureLine)
             tell newMessage
                 make new to recipient at end of to recipients with properties {address:\(address)}\(recipientBlock)
             end tell
