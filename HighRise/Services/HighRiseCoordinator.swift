@@ -43,6 +43,18 @@ final class HighRiseCoordinator: ObservableObject {
     /// Campaign-wide CC / BCC / BCC-me applied to every message in the run.
     @Published var envelope = CampaignEnvelope()
 
+    /// Optional From identity for Apple Mail (e.g. `Jordan <jordan@work.com>`),
+    /// which must match a configured Mail account. Empty = default account.
+    @Published var senderIdentity: String = ""
+
+    /// The sender to hand the builder — only for Apple Mail (Outlook sends from
+    /// its own default account), and only when the user set one.
+    private var effectiveSender: String? {
+        guard selectedClient == .appleMail else { return nil }
+        let trimmed = senderIdentity.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     /// Files attached to every message in the run (same files for all recipients).
     @Published var attachments: [URL] = []
 
@@ -487,7 +499,8 @@ final class HighRiseCoordinator: ObservableObject {
                     isHTML: template.format == .html,
                     cc: cc,
                     bcc: bcc,
-                    attachmentPaths: allAttachments
+                    attachmentPaths: allAttachments,
+                    sender: effectiveSender
                 )
                 let status: SendOutcome.Status
                 do {
@@ -556,7 +569,8 @@ final class HighRiseCoordinator: ObservableObject {
             subject: "[TEST] " + sample.resolvedSubject,
             body: sample.resolvedBody,
             isHTML: template.format == .html,
-            attachmentPaths: attachments.map(\.path)
+            attachmentPaths: attachments.map(\.path),
+            sender: effectiveSender
         )
         do {
             try sender.deliver(message, mode: sendMode)

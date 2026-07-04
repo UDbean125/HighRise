@@ -15,6 +15,10 @@ struct ComposedMessage {
     /// POSIX paths of files to attach to every message. Existence is checked by
     /// the caller before the run; the builder only escapes and emits them.
     var attachmentPaths: [String] = []
+    /// The From identity for Apple Mail (e.g. `Jordan <jordan@work.com>`), which
+    /// must match a configured Mail account. Nil uses the default account.
+    /// Ignored for Outlook, which sends from its own default account.
+    var sender: String? = nil
 }
 
 /// Builds the AppleScript that drives Apple Mail / Outlook for a single message.
@@ -90,10 +94,12 @@ enum AppleScriptBuilder {
         }
         let extras = ccLines + bccLines + attachmentLines
         let recipientBlock = extras.isEmpty ? "" : "\n" + extras.joined(separator: "\n")
+        // `sender` picks the From account; it must match a configured Mail account.
+        let senderLine = m.sender.map { "\n    set sender of newMessage to \(stringLiteral($0))" } ?? ""
 
         return """
         tell application "Mail"
-            set newMessage to make new outgoing message with properties {subject:\(subject), content:\(body), visible:false}
+            set newMessage to make new outgoing message with properties {subject:\(subject), content:\(body), visible:false}\(senderLine)
             tell newMessage
                 make new to recipient at end of to recipients with properties {address:\(address)}\(recipientBlock)
             end tell

@@ -111,6 +111,19 @@ struct AppleScriptBuilderTests {
         #expect(!script.contains("do shell script \"boom\""))
     }
 
+    @Test("Apple Mail sets the sender when a From identity is given")
+    func appleMailSender() {
+        let withSender = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                         subject: "S", body: "B", isHTML: false,
+                                         sender: "Jordan <jordan@work.com>")
+        let script = AppleScriptBuilder.script(for: withSender, client: .appleMail, mode: .draft)
+        #expect(script.contains("set sender of newMessage to \"Jordan <jordan@work.com>\""))
+
+        let noSender = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                       subject: "S", body: "B", isHTML: false)
+        #expect(!AppleScriptBuilder.script(for: noSender, client: .appleMail, mode: .draft).contains("set sender"))
+    }
+
     @Test("Apple Mail attaches each file via an escaped POSIX path")
     func appleMailAttachments() {
         let msg = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",

@@ -68,6 +68,16 @@ struct SendView: View {
                       systemImage: "info.circle")
                     .font(.callout).foregroundStyle(.secondary)
             }
+            if coordinator.selectedClient == .appleMail {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("From account (optional)").font(.subheadline)
+                    TextField("Jordan <jordan@work.com>", text: $coordinator.senderIdentity)
+                        .textFieldStyle(.roundedBorder).frame(maxWidth: 320)
+                    Text("Must match one of your configured Mail accounts. Leave blank for your default.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                .padding(.top, 4)
+            }
         }
     }
 
