@@ -66,6 +66,20 @@ enum TemplateMergeEngine {
         }
     }
 
+    /// Resolves `{{Field}}` placeholders in a standalone string (e.g. a CC field
+    /// that references `{{Manager Email}}`) against one contact. Unlike `merge`,
+    /// this neither HTML-escapes nor reports unresolved fields — envelope
+    /// addresses are validated separately by the caller. Fallbacks still apply.
+    static func resolvePlaceholders(in text: String, with contact: Contact) -> String {
+        replacePlaceholders(in: text) { token in
+            if let value = contact.value(for: token.name),
+               !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return value
+            }
+            return token.fallback ?? ""
+        }
+    }
+
     /// Escapes the five characters that are significant in HTML text/attributes.
     static func htmlEscape(_ value: String) -> String {
         var out = ""

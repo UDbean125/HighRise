@@ -35,6 +35,9 @@ final class HighRiseCoordinator: ObservableObject {
     @Published var selectedClient: MailClient = .appleMail
     @Published var sendMode: SendMode = .draft
 
+    /// Campaign-wide CC / BCC / BCC-me applied to every message in the run.
+    @Published var envelope = CampaignEnvelope()
+
     /// How the live send is paced (delay, jitter, batch pauses). Keeps the mail
     /// client responsive and avoids tripping rate limits when sending live.
     @Published var throttle = ThrottlePolicy()
@@ -265,12 +268,15 @@ final class HighRiseCoordinator: ObservableObject {
             var collected: [SendOutcome] = []
             for (index, preview) in queue.enumerated() {
                 if Task.isCancelled { break }
+                let (cc, bcc) = envelope.resolved(for: preview.contact)
                 let message = ComposedMessage(
                     recipientEmail: preview.contact.email,
                     recipientName: preview.contact.displayName,
                     subject: preview.resolvedSubject,
                     body: preview.resolvedBody,
-                    isHTML: template.format == .html
+                    isHTML: template.format == .html,
+                    cc: cc,
+                    bcc: bcc
                 )
                 let status: SendOutcome.Status
                 do {

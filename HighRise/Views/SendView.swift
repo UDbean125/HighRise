@@ -13,6 +13,7 @@ struct SendView: View {
                 header
                 clientPicker
                 modePicker
+                envelopeControls
                 if coordinator.sendMode == .send {
                     throttleControls
                 }
@@ -130,6 +131,36 @@ struct SendView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+        }
+    }
+
+    private var envelopeControls: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 10) {
+                envelopeField("CC", text: $coordinator.envelope.cc,
+                              hint: "Visible to the recipient. Use a column like {{Parent Email}} or a fixed address; separate several with commas.")
+                envelopeField("BCC", text: $coordinator.envelope.bcc,
+                              hint: "Hidden from the recipient. Supports {{Field}} references too.")
+                envelopeField("BCC myself", text: $coordinator.envelope.bccSelf,
+                              hint: "A fixed address BCC'd on every message — a private delivery record, no tracking.")
+            }
+            .padding(.top, 8)
+        } label: {
+            Label("CC, BCC & delivery record", systemImage: "person.2")
+                .font(.headline)
+        }
+    }
+
+    private func envelopeField(_ label: String, text: Binding<String>, hint: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(.subheadline)
+            TextField(label == "BCC myself" ? "you@example.com" : "name@example.com or {{Column}}",
+                      text: text)
+                .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: 360)
+                .accessibilityLabel(label)
+            Text(hint).font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

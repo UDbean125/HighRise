@@ -73,6 +73,44 @@ struct AppleScriptBuilderTests {
         #expect(send.contains("send newMessage"))
     }
 
+    @Test("Apple Mail emits cc and bcc recipients, escaped, only when present")
+    func appleMailCCBCC() {
+        let plain = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                    subject: "S", body: "B", isHTML: false)
+        let noExtras = AppleScriptBuilder.script(for: plain, client: .appleMail, mode: .draft)
+        #expect(!noExtras.contains("cc recipient"))
+        #expect(!noExtras.contains("bcc recipient"))
+
+        let withExtras = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                         subject: "S", body: "B", isHTML: false,
+                                         cc: ["boss@acme.com"], bcc: ["me@acme.com"])
+        let script = AppleScriptBuilder.script(for: withExtras, client: .appleMail, mode: .draft)
+        #expect(script.contains("make new cc recipient at end of cc recipients with properties {address:\"boss@acme.com\"}"))
+        #expect(script.contains("make new bcc recipient at end of bcc recipients with properties {address:\"me@acme.com\"}"))
+    }
+
+    @Test("Outlook emits to, cc and bcc recipients")
+    func outlookCCBCC() {
+        let msg = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                  subject: "S", body: "B", isHTML: false,
+                                  cc: ["boss@acme.com"], bcc: ["me@acme.com"])
+        let script = AppleScriptBuilder.script(for: msg, client: .outlook, mode: .draft)
+        #expect(script.contains("make new to recipient at newMessage with properties {email address:{address:\"a@b.com\"}}"))
+        #expect(script.contains("make new cc recipient at newMessage with properties {email address:{address:\"boss@acme.com\"}}"))
+        #expect(script.contains("make new bcc recipient at newMessage with properties {email address:{address:\"me@acme.com\"}}"))
+    }
+
+    @Test("A crafted cc address stays inside its string literal")
+    func ccAddressEscaped() {
+        let evil = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                   subject: "S", body: "B", isHTML: false,
+                                   cc: ["\"} & (do shell script \"boom\") & {\""])
+        let script = AppleScriptBuilder.script(for: evil, client: .appleMail, mode: .draft)
+        // The payload's quotes must be backslash-escaped, never bare.
+        #expect(script.contains("\\\""))
+        #expect(!script.contains("do shell script \"boom\""))
+    }
+
     @Test("Outlook selects HTML vs plain-text body property by format")
     func outlookBodyProperty() {
         let html = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
