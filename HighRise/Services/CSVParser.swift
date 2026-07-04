@@ -26,11 +26,13 @@ enum CSVParser {
     /// fails. A leading UTF-8 BOM is stripped so it can't corrupt the first
     /// header name.
     static func decode(_ data: Data) -> String? {
-        // UTF-16 with BOM decodes cleanly via .utf16; try it when a BOM is present.
+        // UTF-16 only when a BOM marks it — attempting .utf16 on single-byte text
+        // (Latin-1/CP1252) can mis-decode into garbage instead of failing, so it
+        // must NOT be in the general fallback chain.
         if data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF]) {
             if let s = String(data: data, encoding: .utf16) { return stripBOM(s) }
         }
-        for encoding: String.Encoding in [.utf8, .utf16, .windowsCP1252, .isoLatin1] {
+        for encoding: String.Encoding in [.utf8, .windowsCP1252, .isoLatin1] {
             if let s = String(data: data, encoding: encoding) { return stripBOM(s) }
         }
         return nil
