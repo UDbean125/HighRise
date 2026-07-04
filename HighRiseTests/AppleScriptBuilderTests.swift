@@ -124,6 +124,19 @@ struct AppleScriptBuilderTests {
         #expect(!AppleScriptBuilder.script(for: noSender, client: .appleMail, mode: .draft).contains("set sender"))
     }
 
+    @Test("Apple Mail sets the message signature by name when given")
+    func appleMailSignature() {
+        let withSig = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                      subject: "S", body: "B", isHTML: false,
+                                      signatureName: "Work")
+        let script = AppleScriptBuilder.script(for: withSig, client: .appleMail, mode: .draft)
+        #expect(script.contains("set message signature of newMessage to signature \"Work\""))
+
+        let noSig = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                    subject: "S", body: "B", isHTML: false)
+        #expect(!AppleScriptBuilder.script(for: noSig, client: .appleMail, mode: .draft).contains("message signature"))
+    }
+
     @Test("Apple Mail attaches each file via an escaped POSIX path")
     func appleMailAttachments() {
         let msg = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",

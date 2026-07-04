@@ -56,6 +56,9 @@ struct ContactsImportView: View {
         var types: [UTType] = [.commaSeparatedText, .plainText, .text, .pdf, .tabSeparatedText]
         if let xlsx = UTType(filenameExtension: "xlsx") { types.append(xlsx) }
         if let docx = UTType(filenameExtension: "docx") { types.append(docx) }
+        // Selectable so the user gets a clear "export to CSV" message rather than
+        // the file being greyed out (Numbers' format can't be read directly).
+        if let numbers = UTType(filenameExtension: "numbers") { types.append(numbers) }
         return types
     }
 

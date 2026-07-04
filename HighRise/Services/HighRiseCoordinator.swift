@@ -47,11 +47,37 @@ final class HighRiseCoordinator: ObservableObject {
     /// which must match a configured Mail account. Empty = default account.
     @Published var senderIdentity: String = ""
 
+    /// Optional opt-out footer: when enabled and given a valid reply address, a
+    /// `mailto:` unsubscribe line is appended to every message body at send time.
+    @Published var unsubscribeEnabled = false
+    @Published var unsubscribeReplyTo = ""
+    @Published var unsubscribeNote = ""
+
+    /// Appends the unsubscribe footer to `body` for `contact`, if enabled and the
+    /// reply address is valid. Applied at send time so `previews` stays pure.
+    private func bodyWithFooter(_ body: String, for contact: Contact) -> String {
+        guard unsubscribeEnabled else { return body }
+        let replyTo = unsubscribeReplyTo.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard EmailValidator.isValid(replyTo) else { return body }
+        let footer = template.format == .html
+            ? UnsubscribeFooter.html(replyTo: replyTo, recipientEmail: contact.email, note: unsubscribeNote)
+            : UnsubscribeFooter.plainText(replyTo: replyTo, recipientEmail: contact.email, note: unsubscribeNote)
+        return body + footer
+    }
+
     /// The sender to hand the builder — only for Apple Mail (Outlook sends from
     /// its own default account), and only when the user set one.
     private var effectiveSender: String? {
         guard selectedClient == .appleMail else { return nil }
         let trimmed = senderIdentity.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// The name of a Mail signature to attach (Apple Mail only), if set.
+    @Published var signatureName: String = ""
+    private var effectiveSignature: String? {
+        guard selectedClient == .appleMail else { return nil }
+        let trimmed = signatureName.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
 
@@ -278,9 +304,16 @@ final class HighRiseCoordinator: ObservableObject {
         do {
             switch ext {
             case "csv", "tsv", "txt":
-                let text = try String(contentsOf: url, encoding: .utf8)
-                let table = try CSVParser.parse(text)
+                let data = try Data(contentsOf: url)
+                guard let text = CSVParser.decode(data) else {
+                    reportImportFailure("Couldn't read \(url.lastPathComponent) — its text encoding isn't recognized. Re-save it as UTF-8 CSV.")
+                    return
+                }
+                // TSV files are tab-delimited; other text auto-detects.
+                let table = try CSVParser.parse(text, delimiter: ext == "tsv" ? "\t" : nil)
                 ingest(table, sourceLabel: url.lastPathComponent)
+            case "numbers":
+                reportImportFailure("Apple Numbers files can't be read directly. In Numbers, choose File ▸ Export To ▸ CSV… (or Excel), then import that file.")
             case "xlsx":
                 let sheets = (try? XLSXReader.worksheets(in: url)) ?? []
                 let table = try XLSXReader.read(url)
@@ -561,12 +594,13 @@ final class HighRiseCoordinator: ObservableObject {
                     recipientEmail: preview.contact.email,
                     recipientName: preview.contact.displayName,
                     subject: preview.resolvedSubject,
-                    body: preview.resolvedBody,
+                    body: bodyWithFooter(preview.resolvedBody, for: preview.contact),
                     isHTML: template.format == .html,
                     cc: cc,
                     bcc: bcc,
                     attachmentPaths: allAttachments,
-                    sender: effectiveSender
+                    sender: effectiveSender,
+                    signatureName: effectiveSignature
                 )
                 let status: SendOutcome.Status
                 do {
@@ -633,10 +667,11 @@ final class HighRiseCoordinator: ObservableObject {
             recipientEmail: target,
             recipientName: "Test recipient",
             subject: "[TEST] " + sample.resolvedSubject,
-            body: sample.resolvedBody,
+            body: bodyWithFooter(sample.resolvedBody, for: sample.contact),
             isHTML: template.format == .html,
             attachmentPaths: attachments.map(\.path),
-            sender: effectiveSender
+            sender: effectiveSender,
+            signatureName: effectiveSignature
         )
         do {
             try sender.deliver(message, mode: sendMode)
