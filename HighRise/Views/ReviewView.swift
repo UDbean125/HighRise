@@ -68,11 +68,23 @@ struct ReviewView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if let reason = preview.blockingReason {
-                        Label(reason, systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                            .padding(10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label(reason, systemImage: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            if let suggestion = coordinator.nameSuggestion(for: preview) {
+                                Button {
+                                    coordinator.fillField(suggestion.field, with: suggestion.name,
+                                                          forContact: preview.contact.id)
+                                } label: {
+                                    Label("Use “\(suggestion.name)” for \(suggestion.field)",
+                                          systemImage: "wand.and.stars")
+                                }
+                                .controlSize(.small)
+                            }
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
                     }
 
                     field("To", value: "\(preview.contact.displayName) <\(preview.contact.email)>")

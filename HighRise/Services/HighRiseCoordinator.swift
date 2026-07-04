@@ -359,6 +359,29 @@ final class HighRiseCoordinator: ObservableObject {
         contacts = parsedContacts
     }
 
+    // MARK: - Name-inference repair
+
+    /// For a row blocked on a missing first-name field, a suggested (field, name)
+    /// inferred from the recipient's email — or nil when there's nothing to
+    /// suggest. Offered as a manual fix in review, never applied automatically.
+    func nameSuggestion(for preview: MergePreview) -> (field: String, name: String)? {
+        guard let field = preview.unresolvedFields.first(where: { Self.isFirstNameField($0) }),
+              let name = NameInference.suggestedFirstName(from: preview.contact.email)
+        else { return nil }
+        return (field, name)
+    }
+
+    /// Fills `field` with `value` for the given contact and re-merges.
+    func fillField(_ field: String, with value: String, forContact id: UUID) {
+        guard let index = contacts.firstIndex(where: { $0.id == id }) else { return }
+        contacts[index].fields[field] = value
+    }
+
+    private static func isFirstNameField(_ field: String) -> Bool {
+        let key = field.lowercased().replacingOccurrences(of: " ", with: "")
+        return key == "firstname" || key == "name" || key == "first" || key == "givenname"
+    }
+
     // MARK: - Sending
 
     /// Runs the merge-and-deliver loop over every sendable preview.
