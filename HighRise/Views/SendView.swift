@@ -66,9 +66,21 @@ struct SendView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             if coordinator.selectedClient == .appleMail && coordinator.template.format == .html {
-                Label("Apple Mail's automation only reliably sets plain text. For full HTML, use Outlook.",
-                      systemImage: "info.circle")
-                    .font(.callout).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Apple Mail's automation only reliably sets plain text. For full HTML, use Outlook — or export .eml drafts below.",
+                          systemImage: "info.circle")
+                        .font(.callout).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button {
+                        exportHTMLDrafts()
+                    } label: {
+                        Label("Export HTML drafts (.eml)…  ·  experimental", systemImage: "curlybraces")
+                    }
+                    .disabled(coordinator.sendablePreviews.isEmpty)
+                    if let emlStatus {
+                        Text(emlStatus).font(.callout).foregroundStyle(.secondary)
+                    }
+                }
             }
             if coordinator.selectedClient == .appleMail {
                 VStack(alignment: .leading, spacing: 4) {
@@ -195,6 +207,19 @@ struct SendView: View {
     }
 
     @State private var pdfStatus: String?
+    @State private var emlStatus: String?
+
+    private func exportHTMLDrafts() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.prompt = "Choose Folder"
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+        let result = coordinator.exportHTMLDrafts(toFolder: folder)
+        emlStatus = "\(result.written) .eml draft\(result.written == 1 ? "" : "s") saved"
+            + (result.failed > 0 ? " · \(result.failed) failed" : "")
+            + ". Double-click one to open it in Mail."
+    }
 
     private var pdfRow: some View {
         DisclosureGroup {

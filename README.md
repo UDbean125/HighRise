@@ -170,6 +170,11 @@ security boundary.
 
 - **Apple Mail + HTML:** Mail's AppleScript only reliably sets a plain-text body.
   HTML is full-fidelity in Outlook; the UI warns when Mail + HTML are combined.
+  An **experimental** workaround exports one `.eml` draft per recipient (full
+  HTML) that opens in Mail on double-click — verify on your Mac before relying
+  on it.
+- **Merge to PDF:** generate one personalized PDF per recipient (optionally
+  password-protected) for invoices/letters — saved locally, sent by nobody.
 - **Excel:** a multi-sheet workbook shows a worksheet picker (defaulting to the
   first tab in the workbook's declared order); one sheet is imported at a time.
 - **Word/PDF:** address scraping is best-effort; always review before sending.

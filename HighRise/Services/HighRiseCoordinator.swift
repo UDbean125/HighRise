@@ -465,6 +465,41 @@ final class HighRiseCoordinator: ObservableObject {
     /// Optional password applied to every generated PDF.
     @Published var pdfPassword: String = ""
 
+    /// Writes one `.eml` draft per sendable recipient into `folder`, carrying the
+    /// full HTML body so Apple Mail can open it at full fidelity (double-click,
+    /// or File ▸ Import). Experimental — see `MIMEMessageComposer`. Returns the
+    /// count written and the count that failed.
+    @discardableResult
+    func exportHTMLDrafts(toFolder folder: URL) -> (written: Int, failed: Int) {
+        let date = Self.rfc822Date(Date())
+        var written = 0, failed = 0
+        for (index, preview) in sendablePreviews.enumerated() {
+            let plain = HTMLTextExtractor.plainText(fromHTML: preview.resolvedBody)
+            let message = MIMEMessageComposer.Message(
+                from: effectiveSender, to: preview.contact.email,
+                subject: preview.resolvedSubject, html: preview.resolvedBody, plainText: plain)
+            // A stable, collision-free boundary without relying on randomness.
+            let boundary = "HighRise-boundary-\(index)-\(preview.contact.email.hashValue)"
+            let eml = MIMEMessageComposer.eml(message, boundary: boundary, date: date)
+            let name = PDFFilename.sanitize(preview.contact.email) + ".eml"
+            do {
+                try eml.write(to: folder.appendingPathComponent(name), atomically: true, encoding: .utf8)
+                written += 1
+            } catch {
+                failed += 1
+                Log.send.error("EML draft write failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        return (written, failed)
+    }
+
+    private static func rfc822Date(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
+        return formatter.string(from: date)
+    }
+
     /// Renders one personalized PDF per sendable recipient into `folder`.
     /// Returns the count written and the count that failed to render.
     @discardableResult
