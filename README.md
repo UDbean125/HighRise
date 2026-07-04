@@ -15,11 +15,14 @@ Built to the Bryan's Notes stack rules: Swift + SwiftUI, Apple SDK only,
 1. **Compose** an email template (plain text or HTML) with `{{Field}}` merge
    placeholders — `{{Name}}`, `{{Company}}`, or any column from your list.
 2. **Import recipients** from any of:
-   - CSV / TSV files
-   - Excel `.xlsx` files (parsed natively)
+   - CSV / TSV files — delimiter (comma/semicolon/tab), a UTF-8 BOM, and
+     non-UTF-8 encodings are handled automatically
+   - Excel `.xlsx` files (parsed natively; multi-sheet workbooks show a picker)
    - Word `.docx` / PDF files (best-effort address scraping)
    - your iCloud / Mac **Contacts**
    - **Outlook** contacts (via automation)
+   - (Apple **Numbers** files can't be read directly — export to CSV first; the
+     app tells you so.)
 3. **Review** every personalized message. Recipients with missing data or an
    invalid address are flagged and excluded automatically.
 4. **Send** — *draft-first by default*: each message is created in your client's

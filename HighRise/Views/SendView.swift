@@ -301,6 +301,16 @@ struct SendView: View {
                               hint: "Hidden from the recipient. Supports {{Field}} references too.")
                 envelopeField("BCC myself", text: $coordinator.envelope.bccSelf,
                               hint: "A fixed address BCC'd on every message — a private delivery record, no tracking.")
+
+                Divider()
+                Toggle("Add an unsubscribe footer", isOn: $coordinator.unsubscribeEnabled)
+                    .font(.subheadline)
+                if coordinator.unsubscribeEnabled {
+                    envelopeField("Opt-out replies go to", text: $coordinator.unsubscribeReplyTo,
+                                  hint: "A mailto: link recipients use to ask off the list. No hosted page, no tracking — you add their reply to your do-not-contact list.")
+                    envelopeField("Footer text (optional)", text: $coordinator.unsubscribeNote,
+                                  hint: "e.g. “Prefer not to hear from us? Let us know:”")
+                }
             }
             .padding(.top, 8)
         } label: {

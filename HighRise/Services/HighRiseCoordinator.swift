@@ -47,6 +47,24 @@ final class HighRiseCoordinator: ObservableObject {
     /// which must match a configured Mail account. Empty = default account.
     @Published var senderIdentity: String = ""
 
+    /// Optional opt-out footer: when enabled and given a valid reply address, a
+    /// `mailto:` unsubscribe line is appended to every message body at send time.
+    @Published var unsubscribeEnabled = false
+    @Published var unsubscribeReplyTo = ""
+    @Published var unsubscribeNote = ""
+
+    /// Appends the unsubscribe footer to `body` for `contact`, if enabled and the
+    /// reply address is valid. Applied at send time so `previews` stays pure.
+    private func bodyWithFooter(_ body: String, for contact: Contact) -> String {
+        guard unsubscribeEnabled else { return body }
+        let replyTo = unsubscribeReplyTo.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard EmailValidator.isValid(replyTo) else { return body }
+        let footer = template.format == .html
+            ? UnsubscribeFooter.html(replyTo: replyTo, recipientEmail: contact.email, note: unsubscribeNote)
+            : UnsubscribeFooter.plainText(replyTo: replyTo, recipientEmail: contact.email, note: unsubscribeNote)
+        return body + footer
+    }
+
     /// The sender to hand the builder — only for Apple Mail (Outlook sends from
     /// its own default account), and only when the user set one.
     private var effectiveSender: String? {
@@ -576,7 +594,7 @@ final class HighRiseCoordinator: ObservableObject {
                     recipientEmail: preview.contact.email,
                     recipientName: preview.contact.displayName,
                     subject: preview.resolvedSubject,
-                    body: preview.resolvedBody,
+                    body: bodyWithFooter(preview.resolvedBody, for: preview.contact),
                     isHTML: template.format == .html,
                     cc: cc,
                     bcc: bcc,
@@ -649,7 +667,7 @@ final class HighRiseCoordinator: ObservableObject {
             recipientEmail: target,
             recipientName: "Test recipient",
             subject: "[TEST] " + sample.resolvedSubject,
-            body: sample.resolvedBody,
+            body: bodyWithFooter(sample.resolvedBody, for: sample.contact),
             isHTML: template.format == .html,
             attachmentPaths: attachments.map(\.path),
             sender: effectiveSender,
