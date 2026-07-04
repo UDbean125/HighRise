@@ -80,4 +80,81 @@ struct TemplateMergeEngineTests {
         let template = EmailTemplate(subject: "{{Name}} {{Company}}", body: "{{Name}} {{Project}}")
         #expect(template.referencedFields == ["Name", "Company", "Project"])
     }
+
+    // MARK: - Fallback values ({{Field|fallback}})
+
+    @Test("Fallback is used when the field is missing, and the row still sends")
+    func fallbackForMissingField() {
+        let template = EmailTemplate(subject: "Hi {{First Name|there}}", body: "x")
+        let preview = TemplateMergeEngine.merge(template: template, with: contact([:]))
+        #expect(preview.resolvedSubject == "Hi there")
+        #expect(preview.unresolvedFields.isEmpty)
+        #expect(preview.isSendable)
+    }
+
+    @Test("Fallback is used when the field is empty or whitespace")
+    func fallbackForEmptyField() {
+        let template = EmailTemplate(subject: "Hi {{Name|friend}}", body: "x")
+        let preview = TemplateMergeEngine.merge(template: template, with: contact(["Name": "   "]))
+        #expect(preview.resolvedSubject == "Hi friend")
+        #expect(preview.unresolvedFields.isEmpty)
+    }
+
+    @Test("A real value always wins over the fallback")
+    func valueBeatsFallback() {
+        let template = EmailTemplate(subject: "Hi {{Name|there}}", body: "x")
+        let preview = TemplateMergeEngine.merge(template: template, with: contact(["Name": "Ada"]))
+        #expect(preview.resolvedSubject == "Hi Ada")
+    }
+
+    @Test("An explicitly empty fallback renders nothing without blocking")
+    func emptyFallbackAllowsBlank() {
+        let template = EmailTemplate(subject: "Hi{{ Honorific|}} {{Name}}", body: "x")
+        let preview = TemplateMergeEngine.merge(template: template, with: contact(["Name": "Ada"]))
+        #expect(preview.resolvedSubject == "Hi Ada")
+        #expect(preview.unresolvedFields.isEmpty)
+    }
+
+    @Test("Without a fallback a missing field still blocks — opt-in only")
+    func noFallbackStillBlocks() {
+        let template = EmailTemplate(subject: "Hi {{Name}}", body: "x")
+        let preview = TemplateMergeEngine.merge(template: template, with: contact([:]))
+        #expect(preview.unresolvedFields == ["Name"])
+        #expect(!preview.isSendable)
+    }
+
+    @Test("Fallback syntax tolerates whitespace around name and fallback")
+    func fallbackWhitespaceTolerant() {
+        let template = EmailTemplate(subject: "{{ first name | there }}", body: "x")
+        let preview = TemplateMergeEngine.merge(template: template,
+                                                with: contact(["First Name": "Ada"]))
+        #expect(preview.resolvedSubject == "Ada")
+        let missing = TemplateMergeEngine.merge(template: template, with: contact([:]))
+        #expect(missing.resolvedSubject == "there")
+    }
+
+    @Test("Fallback text is HTML-escaped in HTML bodies, like field values")
+    func fallbackHTMLEscaped() {
+        let template = EmailTemplate(subject: "x", body: "<p>{{Name|friend & colleague}}</p>",
+                                     format: .html)
+        let preview = TemplateMergeEngine.merge(template: template, with: contact([:]))
+        #expect(preview.resolvedBody == "<p>friend &amp; colleague</p>")
+    }
+
+    @Test("The fallback may itself contain pipes — split is on the first pipe")
+    func fallbackKeepsLaterPipes() {
+        let token = EmailTemplate.token(fromRawPlaceholder: "Name|a|b")
+        #expect(token.name == "Name")
+        #expect(token.fallback == "a|b")
+    }
+
+    @Test("fieldsRequiringData exempts fields whose every use has a fallback")
+    func fieldsRequiringData() {
+        let template = EmailTemplate(subject: "{{Name|there}} {{Company}}",
+                                     body: "{{Name}} {{Project|the project}}")
+        // Name appears once WITH and once WITHOUT a fallback → still required.
+        #expect(template.fieldsRequiringData == ["Name", "Company"])
+        // referencedFields keeps listing every base name.
+        #expect(template.referencedFields == ["Name", "Company", "Project"])
+    }
 }

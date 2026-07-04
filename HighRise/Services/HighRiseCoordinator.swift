@@ -51,9 +51,11 @@ final class HighRiseCoordinator: ObservableObject {
 
     /// Template fields that none of the imported columns can satisfy — surfaced
     /// in compose so the user notices a typo'd `{{Compnay}}` before review.
+    /// Fields whose every use carries a `{{Field|fallback}}` are exempt: they
+    /// can't block a send, so a missing column isn't a problem.
     var unmatchedTemplateFields: [String] {
         let available = Set(importedHeaders.map { $0.lowercased() })
-        return template.referencedFields.filter { !available.contains($0.lowercased()) }
+        return template.fieldsRequiringData.filter { !available.contains($0.lowercased()) }
     }
 
     var canProceedToContacts: Bool {

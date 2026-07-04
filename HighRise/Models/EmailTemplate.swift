@@ -30,9 +30,38 @@ struct EmailTemplate: Equatable {
         self.format = format
     }
 
+    /// One parsed `{{ … }}` occurrence: the field name plus an optional inline
+    /// fallback written after a pipe — `{{First Name|there}}`.
+    ///
+    /// A fallback makes the placeholder optional: when the row has no value the
+    /// fallback text is used instead of blocking the send. `{{Field|}}` (an
+    /// explicitly empty fallback) means "render nothing, don't block". Without
+    /// a pipe the field is required and a missing value blocks the row, exactly
+    /// as before — fallbacks are a per-field opt-in, never a silent default.
+    struct PlaceholderToken: Equatable {
+        let name: String
+        let fallback: String?
+    }
+
+    /// Parses the raw inner text of a `{{ … }}` occurrence into name + fallback.
+    /// Splits on the *first* pipe so the fallback itself may contain pipes.
+    static func token(fromRawPlaceholder inner: String) -> PlaceholderToken {
+        guard let pipe = inner.firstIndex(of: "|") else {
+            return PlaceholderToken(
+                name: inner.trimmingCharacters(in: .whitespacesAndNewlines),
+                fallback: nil
+            )
+        }
+        let name = String(inner[..<pipe]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallback = String(inner[inner.index(after: pipe)...])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return PlaceholderToken(name: name, fallback: fallback)
+    }
+
     /// The distinct placeholder names referenced anywhere in subject or body,
     /// in first-appearance order. Used to tell the user which columns their
-    /// template expects, and to flag columns the imported list doesn't provide.
+    /// template expects. Names are the base field names — a fallback never
+    /// changes which column a placeholder refers to.
     var referencedFields: [String] {
         var seen = Set<String>()
         var ordered: [String] = []
@@ -46,8 +75,26 @@ struct EmailTemplate: Equatable {
         return ordered
     }
 
-    /// Extracts the trimmed names inside every `{{ … }}` occurrence in `text`.
+    /// The subset of `referencedFields` that appears at least once *without* a
+    /// fallback. Only these must be satisfied by the imported list; a field
+    /// whose every use carries a fallback can't block a send, so it shouldn't
+    /// trigger the "no column for …" warning either.
+    var fieldsRequiringData: [String] {
+        var required = Set<String>()
+        for token in Self.placeholderTokens(in: subject) + Self.placeholderTokens(in: body)
+        where token.fallback == nil {
+            required.insert(token.name.lowercased())
+        }
+        return referencedFields.filter { required.contains($0.lowercased()) }
+    }
+
+    /// Extracts the trimmed field names inside every `{{ … }}` occurrence.
     static func placeholderNames(in text: String) -> [String] {
+        placeholderTokens(in: text).map(\.name)
+    }
+
+    /// Extracts every `{{ … }}` occurrence as a parsed name + fallback token.
+    static func placeholderTokens(in text: String) -> [PlaceholderToken] {
         guard let regex = try? NSRegularExpression(pattern: Self.placeholderPattern) else {
             return []
         }
@@ -55,7 +102,7 @@ struct EmailTemplate: Equatable {
         return regex.matches(in: text, range: range).compactMap { match in
             guard match.numberOfRanges >= 2,
                   let r = Range(match.range(at: 1), in: text) else { return nil }
-            return text[r].trimmingCharacters(in: .whitespacesAndNewlines)
+            return Self.token(fromRawPlaceholder: String(text[r]))
         }
     }
 

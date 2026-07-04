@@ -32,7 +32,11 @@ Wrap any column name in double braces: `Hi {{FirstName}}, I wanted to reach out
 about {{Company}}…`. Matching is case- and whitespace-insensitive (`{{ company }}`
 ≡ `{{Company}}`). If a recipient is missing a field the template uses, that
 message is blocked from sending rather than going out with a blank or a literal
-`{{…}}`. In HTML templates, field values are HTML-escaped automatically.
+`{{…}}`. To make a field optional, add a fallback after a pipe —
+`{{FirstName|there}}` uses "there" when the row has no value (and
+`{{FirstName|}}` renders nothing) instead of blocking the message. In HTML
+templates, substituted values — field data and fallbacks alike — are
+HTML-escaped automatically.
 
 ---
 
