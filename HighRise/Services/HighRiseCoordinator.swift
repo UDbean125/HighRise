@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import Combine
 import os
 
 /// The app's single source of truth, driving the import → review → send flow.
@@ -87,8 +88,40 @@ final class HighRiseCoordinator: ObservableObject {
     private let doNotContact = DoNotContactStore()
     @Published private(set) var suppressionEntries: [SuppressionEntry] = []
 
+    /// The saved-template library and crash-safe autosave of the working draft.
+    private let library = TemplateLibraryStore()
+    @Published private(set) var savedTemplates: [SavedTemplate] = []
+    private var cancellables = Set<AnyCancellable>()
+
     init() {
         suppressionEntries = doNotContact.entries
+        savedTemplates = library.templates
+        // Restore the last working draft if one was autosaved.
+        if let restored = library.loadAutosave() { template = restored }
+        // Autosave the working draft, debounced so it's not written per keystroke.
+        $template
+            .debounce(for: .seconds(1), scheduler: RunLoop.main)
+            .sink { [weak self] draft in self?.library.saveAutosave(draft) }
+            .store(in: &cancellables)
+    }
+
+    // MARK: - Template library
+
+    /// Saves the current template under `name` (overwriting a same-named one).
+    func saveCurrentTemplate(as name: String) {
+        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        library.save(template, as: name)
+        savedTemplates = library.templates
+    }
+
+    /// Loads a saved template into the composer.
+    func loadTemplate(_ saved: SavedTemplate) {
+        template = saved.template
+    }
+
+    func deleteTemplate(_ saved: SavedTemplate) {
+        library.delete(id: saved.id)
+        savedTemplates = library.templates
     }
 
     // MARK: - Derived state

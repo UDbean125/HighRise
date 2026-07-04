@@ -4,8 +4,8 @@ import Foundation
 /// simple test?" Used to pick a template variant without any template language —
 /// the have-data / don't-have-data and value-equals cases cover most real
 /// conditional-content needs.
-struct RoutingRule: Equatable {
-    enum Predicate: String, CaseIterable, Identifiable, Equatable {
+struct RoutingRule: Equatable, Codable {
+    enum Predicate: String, CaseIterable, Identifiable, Equatable, Codable {
         case isNotEmpty = "is filled in"
         case isEmpty = "is empty"
         case equals = "equals"
@@ -49,7 +49,7 @@ struct RoutingRule: Equatable {
 
 /// An alternate subject/body sent to recipients matching a routing rule. The
 /// first variant whose rule matches wins; the base template is the fallback.
-struct TemplateVariant: Equatable, Identifiable {
+struct TemplateVariant: Equatable, Identifiable, Codable {
     let id: UUID
     var rule: RoutingRule
     var subject: String

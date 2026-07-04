@@ -12,10 +12,17 @@ struct TemplateEditorView: View {
     private enum Field: Hashable { case subject, body }
     @FocusState private var focus: Field?
 
+    @State private var showSaveDialog = false
+    @State private var newTemplateName = ""
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                header
+                HStack(alignment: .top) {
+                    header
+                    Spacer()
+                    templateLibraryMenu
+                }
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Subject").font(.headline)
@@ -50,6 +57,42 @@ struct TemplateEditorView: View {
             .padding(24)
             .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
+        }
+    }
+
+    private var templateLibraryMenu: some View {
+        Menu {
+            Button {
+                newTemplateName = ""
+                showSaveDialog = true
+            } label: {
+                Label("Save current template…", systemImage: "square.and.arrow.down")
+            }
+            if !coordinator.savedTemplates.isEmpty {
+                Divider()
+                Section("Load") {
+                    ForEach(coordinator.savedTemplates.sorted(by: { $0.savedAt > $1.savedAt })) { saved in
+                        Button(saved.name) { coordinator.loadTemplate(saved) }
+                    }
+                }
+                Divider()
+                Menu("Delete") {
+                    ForEach(coordinator.savedTemplates.sorted(by: { $0.savedAt > $1.savedAt })) { saved in
+                        Button(saved.name, role: .destructive) { coordinator.deleteTemplate(saved) }
+                    }
+                }
+            }
+        } label: {
+            Label("Templates", systemImage: "tray.full")
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .alert("Save template", isPresented: $showSaveDialog) {
+            TextField("Template name", text: $newTemplateName)
+            Button("Save") { coordinator.saveCurrentTemplate(as: newTemplateName) }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Saves the subject, body, format, and any variants under a name you can reload later.")
         }
     }
 

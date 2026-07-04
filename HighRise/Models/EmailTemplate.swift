@@ -6,7 +6,7 @@ import Foundation
 /// The double-brace form is deliberately chosen over single braces or `[Field]`
 /// so that ordinary prose containing brackets or single braces is never
 /// mistaken for a merge field.
-struct EmailTemplate: Equatable {
+struct EmailTemplate: Equatable, Codable {
 
     /// How the body is interpreted when composing the message.
     ///
@@ -14,7 +14,7 @@ struct EmailTemplate: Equatable {
     /// Outlook. `html` is full-fidelity in Outlook; Apple Mail's AppleScript
     /// support for setting HTML is unreliable, so the UI warns when the two
     /// are combined rather than silently shipping broken markup.
-    enum BodyFormat: String, CaseIterable, Identifiable, Equatable {
+    enum BodyFormat: String, CaseIterable, Identifiable, Equatable, Codable {
         case plainText = "Plain text"
         case html = "HTML"
         var id: String { rawValue }
