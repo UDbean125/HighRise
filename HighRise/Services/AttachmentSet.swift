@@ -34,4 +34,18 @@ enum AttachmentSet {
         return String(format: "Attachments total about %.0f MB. Many mail servers reject messages over ~25 MB "
             + "(encoding adds ~33%%) — consider a link instead for large files.", mb)
     }
+
+    /// Parses a per-recipient attachment cell into POSIX paths: split on `;`,
+    /// trim, drop blanks, and expand a leading `~` to the home directory. Pure,
+    /// so the parsing is unit-tested; existence is checked separately.
+    static func paths(fromColumnValue value: String,
+                      homeDirectory: String = NSHomeDirectory()) -> [String] {
+        value.split(separator: ";").compactMap { piece in
+            let trimmed = piece.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+            if trimmed == "~" { return homeDirectory }
+            if trimmed.hasPrefix("~/") { return homeDirectory + String(trimmed.dropFirst()) }
+            return trimmed
+        }
+    }
 }

@@ -29,6 +29,7 @@ struct ContactsImportView: View {
 
                 if !coordinator.contacts.isEmpty {
                     emailColumnPicker
+                    attachmentColumnPicker
                     summaryAndPreview
                 }
             }
@@ -196,6 +197,26 @@ struct ContactsImportView: View {
             }
             .labelsHidden()
             .frame(maxWidth: 240)
+            Spacer()
+        }
+    }
+
+    private var attachmentColumnPicker: some View {
+        HStack {
+            Text("Attachment column").font(.headline)
+            Picker("Attachment column", selection: Binding(
+                get: { coordinator.attachmentColumn ?? "" },
+                set: { coordinator.attachmentColumn = $0.isEmpty ? nil : $0 }
+            )) {
+                Text("None").tag("")
+                ForEach(coordinator.importedHeaders, id: \.self) { header in
+                    Text(header).tag(header)
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 240)
+            Text("Optional — a per-recipient file path (use “;” for several).")
+                .font(.callout).foregroundStyle(.secondary)
             Spacer()
         }
     }

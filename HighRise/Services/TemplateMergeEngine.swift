@@ -17,7 +17,8 @@ enum TemplateMergeEngine {
     /// `{{…}}` ever reaches a recipient) and reported on the preview so the
     /// review screen can block the send.
     static func merge(template: EmailTemplate, with contact: Contact,
-                      isDuplicate: Bool = false, isSuppressed: Bool = false) -> MergePreview {
+                      isDuplicate: Bool = false, isSuppressed: Bool = false,
+                      attachments: (paths: [String], missing: [String]) = ([], [])) -> MergePreview {
         var unresolved: [String] = []
         var seenUnresolved = Set<String>()
 
@@ -62,20 +63,26 @@ enum TemplateMergeEngine {
             unresolvedFields: unresolved,
             hasValidEmail: EmailValidator.isValid(contact.email),
             isDuplicate: isDuplicate,
-            isSuppressed: isSuppressed
+            isSuppressed: isSuppressed,
+            attachmentPaths: attachments.paths,
+            missingAttachmentPaths: attachments.missing
         )
     }
 
     /// Merges the template against every contact, preserving order, flagging
-    /// rows whose address repeats an earlier one, and marking rows the caller
-    /// deems suppressed (on the do-not-contact list) so both are held back.
+    /// rows whose address repeats an earlier one, marking suppressed rows, and
+    /// attaching per-recipient files resolved by `attachments` (a missing file
+    /// blocks that row).
     static func mergeAll(template: EmailTemplate, contacts: [Contact],
-                         isSuppressed: (Contact) -> Bool = { _ in false }) -> [MergePreview] {
+                         isSuppressed: (Contact) -> Bool = { _ in false },
+                         attachments: (Contact) -> (paths: [String], missing: [String]) = { _ in ([], []) }
+    ) -> [MergePreview] {
         let duplicateIDs = DuplicateDetector.duplicateIDs(in: contacts)
         return contacts.map {
             merge(template: template, with: $0,
                   isDuplicate: duplicateIDs.contains($0.id),
-                  isSuppressed: isSuppressed($0))
+                  isSuppressed: isSuppressed($0),
+                  attachments: attachments($0))
         }
     }
 

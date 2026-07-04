@@ -31,4 +31,16 @@ struct AttachmentSetTests {
         #expect(warning != nil)
         #expect(warning?.contains("MB") == true)
     }
+
+    @Test("A column value splits on ; and expands ~")
+    func parsesColumnPaths() {
+        let paths = AttachmentSet.paths(fromColumnValue: " ~/Docs/a.pdf ; /tmp/b.pdf ;; ~",
+                                        homeDirectory: "/Users/me")
+        #expect(paths == ["/Users/me/Docs/a.pdf", "/tmp/b.pdf", "/Users/me"])
+    }
+
+    @Test("A blank column value yields no paths")
+    func parsesBlank() {
+        #expect(AttachmentSet.paths(fromColumnValue: "   ", homeDirectory: "/Users/me").isEmpty)
+    }
 }

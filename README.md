@@ -173,6 +173,7 @@ security boundary.
 - **Excel:** a multi-sheet workbook shows a worksheet picker (defaulting to the
   first tab in the workbook's declared order); one sheet is imported at a time.
 - **Word/PDF:** address scraping is best-effort; always review before sending.
-- **Attachments:** the same file(s) can be attached to every message (with a
-  pre-send size warning); per-recipient attachments are not yet implemented.
+- **Attachments:** attach the same file(s) to every message (with a pre-send
+  size warning), and/or a per-recipient file via an "attachment" column (a
+  missing file holds that row back). Large files may still bounce.
 - An **undo/scheduled-send** window is not yet implemented.

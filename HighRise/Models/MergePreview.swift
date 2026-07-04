@@ -30,9 +30,16 @@ struct MergePreview: Identifiable {
     /// list. Held back silently on future merges without editing the source.
     let isSuppressed: Bool
 
+    /// Per-recipient attachment file paths resolved from a data column (empty
+    /// when the feature isn't used), plus any of those paths that don't exist
+    /// on disk — a missing file blocks the row rather than sending a broken one.
+    let attachmentPaths: [String]
+    let missingAttachmentPaths: [String]
+
     init(id: UUID, contact: Contact, resolvedSubject: String, resolvedBody: String,
          unresolvedFields: [String], hasValidEmail: Bool,
-         isDuplicate: Bool = false, isSuppressed: Bool = false) {
+         isDuplicate: Bool = false, isSuppressed: Bool = false,
+         attachmentPaths: [String] = [], missingAttachmentPaths: [String] = []) {
         self.id = id
         self.contact = contact
         self.resolvedSubject = resolvedSubject
@@ -41,12 +48,16 @@ struct MergePreview: Identifiable {
         self.hasValidEmail = hasValidEmail
         self.isDuplicate = isDuplicate
         self.isSuppressed = isSuppressed
+        self.attachmentPaths = attachmentPaths
+        self.missingAttachmentPaths = missingAttachmentPaths
     }
 
     /// A preview is safe to send only if it has a valid recipient, no leftover
-    /// placeholders, isn't a repeat of an earlier row, and isn't suppressed.
+    /// placeholders, isn't a repeat of an earlier row, isn't suppressed, and all
+    /// of its per-recipient attachment files exist.
     var isSendable: Bool {
         hasValidEmail && unresolvedFields.isEmpty && !isDuplicate && !isSuppressed
+            && missingAttachmentPaths.isEmpty
     }
 
     var blockingReason: String? {
@@ -61,6 +72,10 @@ struct MergePreview: Identifiable {
         if !unresolvedFields.isEmpty {
             let list = unresolvedFields.joined(separator: ", ")
             return "Missing data for: \(list)"
+        }
+        if !missingAttachmentPaths.isEmpty {
+            let names = missingAttachmentPaths.map { ($0 as NSString).lastPathComponent }.joined(separator: ", ")
+            return "Attachment file not found: \(names)"
         }
         if isDuplicate {
             return "Duplicate of an earlier recipient — held back so \(contact.email) isn't emailed twice."

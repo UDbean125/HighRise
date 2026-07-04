@@ -184,4 +184,24 @@ struct TemplateMergeEngineTests {
         let preview = TemplateMergeEngine.merge(template: template, with: contact([:]))
         #expect(!preview.isDuplicate)
     }
+
+    // MARK: - Per-recipient attachments
+
+    @Test("A resolvable per-recipient attachment is carried and doesn't block")
+    func attachmentPresent() {
+        let template = EmailTemplate(subject: "Hi", body: "x")
+        let preview = TemplateMergeEngine.merge(template: template, with: contact([:]),
+                                                attachments: (["/tmp/a.pdf"], []))
+        #expect(preview.attachmentPaths == ["/tmp/a.pdf"])
+        #expect(preview.isSendable)
+    }
+
+    @Test("A missing per-recipient attachment blocks the row with a reason")
+    func missingAttachmentBlocks() {
+        let template = EmailTemplate(subject: "Hi", body: "x")
+        let preview = TemplateMergeEngine.merge(template: template, with: contact([:]),
+                                                attachments: (["/tmp/gone.pdf"], ["/tmp/gone.pdf"]))
+        #expect(!preview.isSendable)
+        #expect(preview.blockingReason?.contains("gone.pdf") == true)
+    }
 }

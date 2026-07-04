@@ -26,6 +26,10 @@ final class HighRiseCoordinator: ObservableObject {
     @Published private(set) var importSummary: String?
     @Published var importError: String?
 
+    /// Optional column whose value is a per-recipient attachment file path
+    /// (`;`-separated for several, `~` expanded). Nil = no per-recipient files.
+    @Published var attachmentColumn: String?
+
     /// For a multi-sheet `.xlsx`: the visible worksheets and which one is loaded,
     /// so the import screen can offer a tab picker. Empty for other sources and
     /// single-sheet workbooks.
@@ -129,7 +133,18 @@ final class HighRiseCoordinator: ObservableObject {
     /// Live previews of the merged messages for every imported contact.
     var previews: [MergePreview] {
         TemplateMergeEngine.mergeAll(template: template, contacts: contacts,
-                                     isSuppressed: { self.doNotContact.isSuppressed($0.email) })
+                                     isSuppressed: { self.doNotContact.isSuppressed($0.email) },
+                                     attachments: { self.recipientAttachments(for: $0) })
+    }
+
+    /// Resolves a contact's per-recipient attachment paths (and which are
+    /// missing) from `attachmentColumn`. Empty when the feature isn't in use.
+    private func recipientAttachments(for contact: Contact) -> (paths: [String], missing: [String]) {
+        guard let column = attachmentColumn,
+              let raw = contact.value(for: column), !raw.isEmpty else { return ([], []) }
+        let paths = AttachmentSet.paths(fromColumnValue: raw)
+        let missing = paths.filter { !FileManager.default.fileExists(atPath: $0) }
+        return (paths, missing)
     }
 
     var sendablePreviews: [MergePreview] { previews.filter(\.isSendable) }
@@ -194,6 +209,7 @@ final class HighRiseCoordinator: ObservableObject {
         parsedTable = table
         importedHeaders = table.headers
         importError = nil
+        attachmentColumn = Self.detectAttachmentColumn(in: table.headers)
 
         // Choosing the email column repopulates `contacts` via `didSet`;
         // when detection lands on the column already selected, remap by hand.
@@ -320,6 +336,15 @@ final class HighRiseCoordinator: ObservableObject {
         selectedWorksheet = nil
     }
 
+    /// Guesses an attachment column from the headers (a column named
+    /// "attachment"/"attachments"/"file"/"files"), else nil.
+    static func detectAttachmentColumn(in headers: [String]) -> String? {
+        headers.first {
+            let h = $0.lowercased()
+            return h == "attachment" || h == "attachments" || h == "file" || h == "files"
+        }
+    }
+
     private func remapContacts() {
         guard let table = parsedTable else { return }
         let (parsedContacts, _) = CSVParser.contacts(from: table, emailHeader: emailColumn)
@@ -391,6 +416,8 @@ final class HighRiseCoordinator: ObservableObject {
             for (index, preview) in queue.enumerated() {
                 if Task.isCancelled { break }
                 let (cc, bcc) = envelope.resolved(for: preview.contact)
+                // Campaign-wide files plus this recipient's own column files.
+                let allAttachments = attachmentPaths + preview.attachmentPaths
                 let message = ComposedMessage(
                     recipientEmail: preview.contact.email,
                     recipientName: preview.contact.displayName,
@@ -399,7 +426,7 @@ final class HighRiseCoordinator: ObservableObject {
                     isHTML: template.format == .html,
                     cc: cc,
                     bcc: bcc,
-                    attachmentPaths: attachmentPaths
+                    attachmentPaths: allAttachments
                 )
                 let status: SendOutcome.Status
                 do {
@@ -495,6 +522,7 @@ final class HighRiseCoordinator: ObservableObject {
         importError = nil
         parsedTable = nil
         emailColumn = nil
+        attachmentColumn = nil
         clearWorkbookSelection()
         outcomes = []
         sendProgress = 0
