@@ -25,7 +25,7 @@ struct EmailDomainStatsTests {
             "a@gmail.com", "b@gmail.com", "c@gmail.com",
             "d@outlook.com", "e@outlook.com",
             "f@yahoo.com",
-            "g@nope"           // no domain → excluded
+            "g-has-no-at-sign"     // no @ → excluded
         ]))
         #expect(stats.total == 6)
         #expect(stats.entries.first == EmailDomainStats.Entry(domain: "gmail.com", count: 3))
