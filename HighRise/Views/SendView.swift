@@ -525,9 +525,11 @@ struct SendView: View {
                         badge: coordinator.unsubscribeEnabled ? "unsub" : nil) {
             VStack(alignment: .leading, spacing: 10) {
                 envelopeField("CC", text: $coordinator.envelope.cc,
-                              hint: "Visible to the recipient. Use a column like {{Parent Email}} or a fixed address; separate several with commas.")
+                              hint: "Visible to the recipient. Use a column like {{Parent Email}} or a fixed address; separate several with commas.",
+                              summarize: true)
                 envelopeField("BCC", text: $coordinator.envelope.bcc,
-                              hint: "Hidden from the recipient. Supports {{Field}} references too.")
+                              hint: "Hidden from the recipient. Supports {{Field}} references too.",
+                              summarize: true)
                 envelopeField("BCC myself", text: $coordinator.envelope.bccSelf,
                               hint: "A fixed address BCC'd on every message — a private delivery record, no tracking.")
 
@@ -544,7 +546,8 @@ struct SendView: View {
         }
     }
 
-    private func envelopeField(_ label: String, text: Binding<String>, hint: String) -> some View {
+    private func envelopeField(_ label: String, text: Binding<String>, hint: String,
+                               summarize: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label).font(.subheadline)
             TextField(label == "BCC myself" ? "you@example.com" : "name@example.com or {{Column}}",
@@ -552,6 +555,14 @@ struct SendView: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(maxWidth: 360)
                 .accessibilityLabel(label)
+            if summarize {
+                let summary = AddressList.summarize(text.wrappedValue)
+                if let caption = AddressList.caption(summary) {
+                    Text(caption)
+                        .font(.caption).monospacedDigit()
+                        .foregroundStyle(summary.hasInvalid ? .orange : .secondary)
+                }
+            }
             Text(hint).font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
