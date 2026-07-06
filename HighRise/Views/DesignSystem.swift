@@ -236,6 +236,41 @@ struct CollapsibleCard<Content: View>: View {
     }
 }
 
+// MARK: - Score ring
+
+/// A compact circular gauge (0–100) with the value in the middle — used for
+/// the Compose content check. Color communicates the verdict.
+struct ScoreRing: View {
+    let score: Int
+    var size: CGFloat = 56
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color(nsColor: .quaternaryLabelColor), lineWidth: 6)
+            Circle()
+                .trim(from: 0, to: max(0.02, CGFloat(score) / 100))
+                .stroke(color, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            Text("\(score)")
+                .font(.system(size: size * 0.32, weight: .bold))
+                .monospacedDigit()
+        }
+        .frame(width: size, height: size)
+        .animation(.easeInOut(duration: 0.3), value: score)
+        .accessibilityLabel("Content score \(score) out of 100")
+    }
+
+    private var color: Color {
+        switch score {
+        case 90...: return .green
+        case 75..<90: return Brand.accent
+        case 50..<75: return .orange
+        default: return .red
+        }
+    }
+}
+
 // MARK: - Step badge
 
 /// The numbered/checkmarked circle used in the sidebar progress rail.

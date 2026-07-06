@@ -13,23 +13,28 @@ struct ContactsImportView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                header
-                importControls
-                templateRow
-
-                if let error = coordinator.importError {
-                    Label(error, systemImage: "xmark.octagon.fill")
-                        .foregroundStyle(.red)
+            // Same two-column treatment as Compose: the import flow on the
+            // left, a live "list health" rail on the right once data is in.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 24) {
+                    mainColumn
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if !coordinator.contacts.isEmpty {
+                        healthRail
+                            .frame(width: 330)
+                    }
                 }
+                .frame(minWidth: 900)
 
-                if !coordinator.contacts.isEmpty {
-                    columnsCard
-                    previewCard
+                VStack(alignment: .leading, spacing: 20) {
+                    mainColumn
+                    if !coordinator.contacts.isEmpty {
+                        healthRail
+                    }
                 }
             }
             .padding(24)
-            .frame(maxWidth: 820, alignment: .leading)
+            .frame(maxWidth: 1320, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .fileImporter(isPresented: $isImporterPresented,
@@ -43,6 +48,84 @@ struct ContactsImportView: View {
                 coordinator.importFile(at: url)
             case .failure(let error):
                 coordinator.importError = error.localizedDescription
+            }
+        }
+    }
+
+    private var mainColumn: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            header
+            importControls
+            templateRow
+
+            if let error = coordinator.importError {
+                Label(error, systemImage: "xmark.octagon.fill")
+                    .foregroundStyle(.red)
+            }
+
+            if !coordinator.contacts.isEmpty {
+                columnsCard
+                previewCard
+            }
+        }
+    }
+
+    /// Live data-quality readout: usable addresses, duplicates, and how
+    /// completely each column is filled — the columns that need attention float
+    /// to the top.
+    private var healthRail: some View {
+        let health = ListHealth.assess(contacts: coordinator.contacts,
+                                       headers: coordinator.importedHeaders)
+        return SectionCard("List health", systemImage: "waveform.path.ecg",
+                           subtitle: "Better data, better personalization.") {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    StatTile(value: "\(health.validEmails)", label: "usable emails",
+                             systemImage: "checkmark.seal.fill",
+                             tint: health.invalidEmails == 0 ? .green : Brand.accent)
+                    StatTile(value: "\(health.total)", label: "recipients",
+                             systemImage: "person.2.fill")
+                }
+
+                if health.invalidEmails > 0 {
+                    Label("\(health.invalidEmails) missing or invalid address\(health.invalidEmails == 1 ? "" : "es") — those rows will be held back.",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout).foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if health.duplicates > 0 {
+                    Label("\(health.duplicates) duplicate address\(health.duplicates == 1 ? "" : "es") — only the first of each is sent.",
+                          systemImage: "person.2.slash")
+                        .font(.callout).foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if !health.hasIssues {
+                    Label("Every address is usable — no duplicates.",
+                          systemImage: "checkmark.circle.fill")
+                        .font(.callout).foregroundStyle(.green)
+                }
+
+                Divider()
+                Text("Column completeness")
+                    .font(.subheadline.weight(.semibold))
+
+                ForEach(health.columnFill.prefix(12)) { fill in
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack {
+                            Text(fill.column).font(.callout).lineLimit(1)
+                            Spacer()
+                            Text("\(Int((fill.rate * 100).rounded()))%")
+                                .font(.caption.weight(.medium)).monospacedDigit()
+                                .foregroundStyle(fill.rate < 0.5 ? .orange : .secondary)
+                        }
+                        ProgressView(value: fill.rate)
+                            .tint(fill.rate < 0.5 ? .orange : Brand.accent)
+                    }
+                }
+                if health.columnFill.count > 12 {
+                    Text("+ \(health.columnFill.count - 12) more column\(health.columnFill.count - 12 == 1 ? "" : "s"), all fuller than these.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
         }
     }

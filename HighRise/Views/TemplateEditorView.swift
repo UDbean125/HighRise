@@ -114,13 +114,50 @@ struct TemplateEditorView: View {
         }
     }
 
-    /// The always-visible companion rail: the live merged preview on top and
-    /// the merge-field palette beneath — no more scrolling past the editor to
-    /// reach either.
+    /// The always-visible companion rail: the live merged preview on top, the
+    /// local content check, then the merge-field palette — no more scrolling
+    /// past the editor to reach any of them.
     private var sideRail: some View {
         VStack(alignment: .leading, spacing: 16) {
             livePreview
+            contentCheck
             fieldPalette
+        }
+    }
+
+    // MARK: - Content check
+
+    /// Live, on-device quality feedback: a 0–100 score plus specific findings
+    /// (spam triggers, clipped subjects, missed personalization).
+    @ViewBuilder
+    private var contentCheck: some View {
+        if !coordinator.isTemplateEmpty {
+            let findings = ContentLinter.lint(template: coordinator.template)
+            let score = ContentLinter.score(for: findings)
+            SectionCard("Content check", systemImage: "checkmark.shield",
+                        subtitle: "Checked on your Mac — nothing is sent anywhere.") {
+                HStack(alignment: .top, spacing: 14) {
+                    ScoreRing(score: score)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(ContentLinter.grade(for: score))
+                            .font(.subheadline.weight(.semibold))
+                        if findings.isEmpty {
+                            Label("No spam triggers, personalized, inbox-friendly.",
+                                  systemImage: "checkmark.circle.fill")
+                                .font(.callout).foregroundStyle(.green)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else {
+                            ForEach(findings) { finding in
+                                Label(finding.message, systemImage: finding.systemImage)
+                                    .font(.callout)
+                                    .foregroundStyle(finding.severity == .warning ? .orange : .secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
         }
     }
 
