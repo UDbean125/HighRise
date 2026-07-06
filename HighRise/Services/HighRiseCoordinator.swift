@@ -34,6 +34,40 @@ final class HighRiseCoordinator: ObservableObject {
         isShowingWelcome = false
     }
 
+    // MARK: - Interactive walkthrough (coach-marks)
+
+    /// True while the coach-mark tour is spotlighting the real dashboard.
+    @Published var isTouring = false
+    /// Index into `HighRiseTour.steps` for the current spotlight.
+    @Published var tourIndex = 0
+
+    /// The step currently being spotlighted, or nil when the tour is off.
+    var currentTourStep: TourStep? {
+        guard isTouring, HighRiseTour.steps.indices.contains(tourIndex) else { return nil }
+        return HighRiseTour.steps[tourIndex]
+    }
+
+    var isLastTourStep: Bool { tourIndex >= HighRiseTour.steps.count - 1 }
+
+    /// Dismisses the welcome sheet and starts the walkthrough on Compose.
+    func startTour() {
+        stage = .compose
+        tourIndex = 0
+        isShowingWelcome = false
+        isTouring = true
+    }
+
+    func advanceTour() {
+        if isLastTourStep { endTour() } else { tourIndex += 1 }
+    }
+
+    func retreatTour() { if tourIndex > 0 { tourIndex -= 1 } }
+
+    func endTour() {
+        isTouring = false
+        tourIndex = 0
+    }
+
     @Published private(set) var contacts: [Contact] = []
     @Published private(set) var importedHeaders: [String] = []
     @Published var emailColumn: String? { didSet { remapContacts() } }

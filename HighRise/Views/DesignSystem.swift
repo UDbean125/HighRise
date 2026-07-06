@@ -6,17 +6,47 @@ import AppKit
 /// every screen reads as one system. Refined-native first — standard materials
 /// and system colors — with a single confident accent on top.
 enum Brand {
-    /// The HighRise accent: a confident blue, a touch lighter in dark mode so it
-    /// stays legible on dark surfaces. Adaptive via an AppKit dynamic provider.
+    /// The HighRise accent — the azure sampled straight from the app icon, a
+    /// touch lighter in dark mode so it stays legible on dark surfaces. Adaptive
+    /// via an AppKit dynamic provider.
     static let accent = Color(nsColor: NSColor(name: "HighRiseAccent") { appearance in
         let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         return isDark
-            ? NSColor(srgbRed: 0.46, green: 0.63, blue: 1.00, alpha: 1)
-            : NSColor(srgbRed: 0.16, green: 0.36, blue: 0.84, alpha: 1)
+            ? NSColor(srgbRed: 0.44, green: 0.75, blue: 0.96, alpha: 1)   // #6FC0F4
+            : NSColor(srgbRed: 0.18, green: 0.56, blue: 0.85, alpha: 1)   // #2E8FD6
     })
+
+    /// The deep end of the logo's blue gradient — for gradient fills and depth.
+    static let accentDeep = Color(red: 0.12, green: 0.44, blue: 0.72) // #1E6FB8
+    /// The light sky-blue highlight from the logo.
+    static let accentSoft = Color(red: 0.47, green: 0.75, blue: 0.94) // #78C0F0
+
+    /// The signature HighRise gradient (light → azure → deep), used on hero
+    /// surfaces, the onboarding, and the app's brand marks.
+    static var gradient: LinearGradient {
+        LinearGradient(colors: [accentSoft, accent, accentDeep],
+                       startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
 
     /// Corner radius used across cards and tiles.
     static let cornerRadius: CGFloat = 12
+}
+
+// MARK: - Liquid Glass surface
+
+extension View {
+    /// A translucent "glass" background: Apple's **Liquid Glass** on macOS 26+
+    /// (Tahoe), and a vibrant material everywhere else so the same call site
+    /// looks glassy on every supported OS. The app's standard way to lean into
+    /// the glass aesthetic wherever it reads well.
+    @ViewBuilder
+    func glassSurface<S: Shape>(in shape: S) -> some View {
+        if #available(macOS 26.0, *) {
+            self.glassEffect(.regular, in: shape)
+        } else {
+            self.background(.regularMaterial, in: shape)
+        }
+    }
 }
 
 // MARK: - Card container
@@ -27,11 +57,10 @@ private struct CardModifier: ViewModifier {
         content
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(nsColor: .controlBackgroundColor),
-                        in: RoundedRectangle(cornerRadius: Brand.cornerRadius, style: .continuous))
+            .glassSurface(in: RoundedRectangle(cornerRadius: Brand.cornerRadius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: Brand.cornerRadius, style: .continuous)
-                    .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5))
+                    .strokeBorder(Color(nsColor: .separatorColor).opacity(0.4))
             )
     }
 }

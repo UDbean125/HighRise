@@ -26,10 +26,12 @@ struct TemplateEditorView: View {
                     header
                     Spacer()
                     templateLibraryMenu
+                        .coachAnchor("compose.templates")
                 }
 
                 if coordinator.isTemplateEmpty {
                     starterHero
+                        .coachAnchor("compose.gallery")
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -40,6 +42,7 @@ struct TemplateEditorView: View {
                         .focused($focus, equals: .subject)
                         .accessibilityLabel("Email subject")
                 }
+                .coachAnchor("compose.subject")
 
                 bodyFormatPicker
 
