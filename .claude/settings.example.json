@@ -1,7 +1,7 @@
 {
-  "//": "HighRise — pre-approved commands for autonomous dev work.",
-  "//activate": "Copy this to .claude/settings.json to stop approval prompts for these commands:  cp .claude/settings.example.json .claude/settings.json",
-  "//note": "Deliberately scoped to dev tooling — no shell wildcards. Only the repo owner can apply this (the agent cannot widen its own permissions).",
+  "//": "HighRise — pre-approved tools for autonomous dev work.",
+  "//activate": "Copy this to .claude/settings.json to stop approval prompts:  cp .claude/settings.example.json .claude/settings.json",
+  "//note": "Scoped to dev tooling + the GitHub and scheduling MCP servers this project uses — no shell wildcards. Only the repo owner can apply this; the agent cannot widen its own permissions.",
   "permissions": {
     "allow": [
       "Bash(git:*)",
@@ -13,7 +13,9 @@
       "Edit",
       "Write",
       "Glob",
-      "Grep"
+      "Grep",
+      "mcp__github__*",
+      "mcp__Claude_Code_Remote__*"
     ]
   }
 }
