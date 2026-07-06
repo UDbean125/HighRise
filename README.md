@@ -96,6 +96,16 @@ missing a referenced field, and an invalid address) so you can watch the
 escaping and the send-blocking behave. To actually exercise Mail, pipe one of
 the printed scripts to `osascript` — it'll create a real draft.
 
+## Using it from Windows
+
+The app itself is Mac-only, but the merge core is ported:
+`Windows/HighRise-Merge.ps1` is a self-contained PowerShell script (nothing to
+install — PowerShell ships with Windows) that runs the same CSV → `{{Field}}`
+merge → **drafts in classic Outlook** pipeline via COM automation, with the
+same template syntax, filters, and send-blocking rules. Draft-first by
+default, `-DryRun` to preview without touching Outlook. Setup, examples, and
+troubleshooting live in [`Windows/README.md`](Windows/README.md).
+
 ## App icons
 
 `Icons/make-icons.sh` turns master artwork into app icons for macOS, iOS/iPadOS,
