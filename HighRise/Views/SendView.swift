@@ -101,7 +101,9 @@ struct SendView: View {
                               ThrottlePolicy.humanDuration(coordinator.throttle.expectedDuration(forCount: ready)))
                 }
                 metricRow("paperclip", "Attachments",
-                          coordinator.attachments.isEmpty ? "None" : "\(coordinator.attachments.count) file\(coordinator.attachments.count == 1 ? "" : "s")")
+                          coordinator.attachments.isEmpty
+                            ? "None"
+                            : "\(coordinator.attachments.count) · \(AttachmentSet.humanBytes(AttachmentSet.totalBytes(coordinator.attachments)))")
                 metricRow(coordinator.selectedClient.symbolName, "Sending via", coordinator.selectedClient.rawValue)
 
                 if let warning = coordinator.quotaWarning {
@@ -339,12 +341,14 @@ struct SendView: View {
     }
 
     private var attachmentsCard: some View {
-        CollapsibleCard("Attachments", systemImage: "paperclip",
+        let totalBytes = AttachmentSet.totalBytes(coordinator.attachments)
+        return CollapsibleCard("Attachments", systemImage: "paperclip",
                         badge: coordinator.attachments.isEmpty ? nil : "\(coordinator.attachments.count)") {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("The same file(s) are attached to every message.")
+                    Text("The same file(s) are attached to every message — drag files in, or add them.")
                         .font(.callout).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                     Spacer()
                     Button {
                         addAttachments()
@@ -353,25 +357,17 @@ struct SendView: View {
                     }
                 }
 
-                ForEach(coordinator.attachments, id: \.self) { url in
-                    let missing = coordinator.missingAttachments.contains(url)
-                    HStack {
-                        Image(systemName: missing ? "exclamationmark.triangle.fill" : "doc")
-                            .foregroundStyle(missing ? .orange : .secondary)
-                        Text(url.lastPathComponent).lineLimit(1)
-                        if missing {
-                            Text("missing").font(.caption).foregroundStyle(.orange)
-                        }
-                        Spacer()
-                        Button {
-                            coordinator.attachments.removeAll { $0 == url }
-                        } label: {
-                            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.borderless)
-                        .help("Remove attachment")
+                if coordinator.attachments.isEmpty {
+                    dropHint
+                } else {
+                    ForEach(coordinator.attachments, id: \.self) { url in
+                        attachmentRow(url)
                     }
-                    .padding(.vertical, 1)
+                    HStack {
+                        Text("\(coordinator.attachments.count) file\(coordinator.attachments.count == 1 ? "" : "s") · \(AttachmentSet.humanBytes(totalBytes)) total")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                    }
                 }
 
                 if let warning = coordinator.attachmentSizeWarning {
@@ -380,9 +376,76 @@ struct SendView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Brand.accent, style: StrokeStyle(lineWidth: 2, dash: [6]))
+                    .opacity(isDropTargeted ? 1 : 0)
+            )
+            .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+                handleAttachmentDrop(providers)
+            }
         }
     }
 
+    private func attachmentRow(_ url: URL) -> some View {
+        let missing = coordinator.missingAttachments.contains(url)
+        return HStack {
+            Image(systemName: missing ? "exclamationmark.triangle.fill" : "doc")
+                .foregroundStyle(missing ? .orange : .secondary)
+            Text(url.lastPathComponent).lineLimit(1)
+            if missing {
+                Text("missing").font(.caption).foregroundStyle(.orange)
+            } else {
+                Text(AttachmentSet.humanBytes(AttachmentSet.totalBytes([url])))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button {
+                coordinator.attachments.removeAll { $0 == url }
+            } label: {
+                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .help("Remove attachment")
+        }
+        .padding(.vertical, 1)
+    }
+
+    private var dropHint: some View {
+        HStack {
+            Spacer()
+            VStack(spacing: 4) {
+                Image(systemName: "arrow.down.doc").font(.title2).foregroundStyle(.secondary)
+                Text("Drag files here").font(.callout).foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.vertical, 16)
+        .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    /// Appends dropped files to the attachment list (deduped, main-thread).
+    private func handleAttachmentDrop(_ providers: [NSItemProvider]) -> Bool {
+        var handled = false
+        for provider in providers where provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            handled = true
+            provider.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
+                guard let data,
+                      let url = URL(dataRepresentation: data, relativeTo: nil),
+                      url.isFileURL else { return }
+                DispatchQueue.main.async {
+                    if !coordinator.attachments.contains(url) {
+                        coordinator.attachments.append(url)
+                    }
+                }
+            }
+        }
+        return handled
+    }
+
+    @State private var isDropTargeted = false
     @State private var pdfStatus: String?
     @State private var emlStatus: String?
 
