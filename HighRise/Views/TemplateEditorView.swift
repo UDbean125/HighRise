@@ -18,56 +18,29 @@ struct TemplateEditorView: View {
     /// A starter the user picked while the composer already had content — held
     /// until they confirm the overwrite.
     @State private var pendingStarter: StarterTemplate?
+    @State private var showInstructions = false
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                HStack(alignment: .top) {
-                    header
-                    Spacer()
-                    templateLibraryMenu
-                        .coachAnchor("compose.templates")
+            // Wide windows get a two-column workspace — editor on the left, a
+            // live companion rail (preview + field palette) filling the right —
+            // so no screen real estate sits idle. Narrow windows stack.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 24) {
+                    editorColumn
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    sideRail
+                        .frame(width: 360)
                 }
+                .frame(minWidth: 900)
 
-                if coordinator.isTemplateEmpty {
-                    starterHero
-                        .coachAnchor("compose.gallery")
+                VStack(alignment: .leading, spacing: 20) {
+                    editorColumn
+                    sideRail
                 }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Subject").font(.headline)
-                    TextField("e.g. Quick question about {{Company}}",
-                              text: $coordinator.template.subject)
-                        .textFieldStyle(.roundedBorder)
-                        .focused($focus, equals: .subject)
-                        .accessibilityLabel("Email subject")
-                }
-                .coachAnchor("compose.subject")
-
-                bodyFormatPicker
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Body").font(.headline)
-                    TextEditor(text: $coordinator.template.body)
-                        .font(.body)
-                        .frame(minHeight: 220)
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
-                        .focused($focus, equals: .body)
-                        .accessibilityLabel("Email body")
-                    if coordinator.template.body.isEmpty {
-                        Text("Use {{FieldName}} anywhere to drop in a contact's details, e.g.\n\nHi {{First Name}},\n\nI've been following {{Company}} and wanted to reach out about {{Product Name}}…")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                livePreview
-                fieldPalette
-                variantsEditor
-                fieldsSummary
             }
             .padding(24)
-            .frame(maxWidth: 760, alignment: .leading)
+            .frame(maxWidth: 1320, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .sheet(isPresented: $showTemplateGallery) { starterGallerySheet }
@@ -87,6 +60,84 @@ struct TemplateEditorView: View {
         } message: {
             Text("This will overwrite the subject and body you've already written.")
         }
+    }
+
+    // MARK: - Columns
+
+    /// The main writing surface: title row, starter gallery (when empty),
+    /// subject, format, body, variants, and the fields summary.
+    private var editorColumn: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                header
+                Spacer()
+                instructionsButton
+                templateLibraryMenu
+                    .coachAnchor("compose.templates")
+            }
+
+            if coordinator.isTemplateEmpty {
+                starterHero
+                    .coachAnchor("compose.gallery")
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Subject").font(.headline)
+                TextField("e.g. Quick question about {{Company}}",
+                          text: $coordinator.template.subject)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.large)
+                    .focused($focus, equals: .subject)
+                    .accessibilityLabel("Email subject")
+            }
+            .coachAnchor("compose.subject")
+
+            bodyFormatPicker
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Body").font(.headline)
+                TextEditor(text: $coordinator.template.body)
+                    .font(.body)
+                    .frame(minHeight: 260)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+                    .focused($focus, equals: .body)
+                    .accessibilityLabel("Email body")
+                if coordinator.template.body.isEmpty {
+                    Text("Use {{FieldName}} anywhere to drop in a contact's details, e.g.\n\nHi {{First Name}},\n\nI've been following {{Company}} and wanted to reach out about {{Product Name}}…")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            variantsEditor
+            fieldsSummary
+        }
+    }
+
+    /// The always-visible companion rail: the live merged preview on top and
+    /// the merge-field palette beneath — no more scrolling past the editor to
+    /// reach either.
+    private var sideRail: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            livePreview
+            fieldPalette
+        }
+    }
+
+    // MARK: - Instructions
+
+    /// The merge-syntax guide, collapsed behind one button so the dashboard
+    /// itself stays clean.
+    private var instructionsButton: some View {
+        Button {
+            showInstructions.toggle()
+        } label: {
+            Label("How it works", systemImage: "questionmark.circle")
+        }
+        .popover(isPresented: $showInstructions, arrowEdge: .bottom) {
+            MergeSyntaxGuide()
+        }
+        .help("A quick guide to merge fields, fallbacks, and formatters")
     }
 
     // MARK: - Starter templates
@@ -235,10 +286,9 @@ struct TemplateEditorView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Compose your template").font(.title2).bold()
-            Text("Write the email once. Wrap any field from your contact list in double braces — like {{First Name}} or {{Company}} — and HighRise fills it in for each recipient. Add a fallback after a pipe — {{First Name|there}} — for rows with no value, and format with filters like {{Amount|currency:USD}}, {{Renewal Date|date:MMMM d, yyyy}}, or {{Name|fixcaps}} to fix ALL-CAPS.")
+            Text("Compose your template").font(.title.bold())
+            Text("Write it once — HighRise personalizes it for every recipient.")
                 .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -426,5 +476,57 @@ struct FieldChipsRow: View {
             .padding(.vertical, 4)
             .background(Color.accentColor.opacity(0.15), in: Capsule())
             .contentShape(Capsule())
+    }
+}
+
+/// The merge-syntax cheat sheet behind Compose's "How it works" button — the
+/// full instructions live here so the dashboard itself stays clean.
+struct MergeSyntaxGuide: View {
+    private struct Rule: Identifiable {
+        var id: String { token }
+        let token: String
+        let explanation: String
+    }
+
+    private let rules: [Rule] = [
+        Rule(token: "{{First Name}}",
+             explanation: "Inserts that column's value from your list — any column works."),
+        Rule(token: "{{First Name|there}}",
+             explanation: "Fallback: rows with no value say “there” instead of being held back."),
+        Rule(token: "{{Amount|currency:USD}}",
+             explanation: "Formats numbers as money — 24500 becomes $24,500.00."),
+        Rule(token: "{{Due Date|date:MMMM d, yyyy}}",
+             explanation: "Reformats dates — 2026-07-22 becomes July 22, 2026."),
+        Rule(token: "{{Name|fixcaps}}",
+             explanation: "Fixes ALL-CAPS values — JANE DOE becomes Jane Doe.")
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label("How merge fields work", systemImage: "curlybraces")
+                .font(.headline)
+            Text("Write your email once. Anything wrapped in double braces is filled in per recipient from your contact list.")
+                .font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Divider()
+            ForEach(rules) { rule in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(rule.token)
+                        .font(.callout.monospaced())
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Brand.accent.opacity(0.12),
+                                    in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    Text(rule.explanation)
+                        .font(.callout).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Divider()
+            Label("Tip: click any field in the palette to drop it in where you're typing.",
+                  systemImage: "lightbulb")
+                .font(.callout).foregroundStyle(.secondary)
+        }
+        .padding(18)
+        .frame(width: 400)
     }
 }

@@ -73,16 +73,20 @@ private struct StageSidebar: View {
     }
 
     private var brandHeader: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 28, height: 28)
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .shadow(color: .black.opacity(0.12), radius: 1, y: 0.5)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("HighRise").font(.headline)
-                Text("Mail merge").font(.caption).foregroundStyle(.secondary)
+                .frame(width: 46, height: 46)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .shadow(color: .black.opacity(0.18), radius: 3, y: 1.5)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("HighRise")
+                    .font(.title2.bold())
+                    .foregroundStyle(Brand.gradient)
+                Text("Mail merge, made personal")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
             Button {
