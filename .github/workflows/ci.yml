@@ -50,3 +50,32 @@ jobs:
             -destination 'platform=macOS' \
             CODE_SIGNING_ALLOWED=NO \
             | tail -80
+
+  # The Windows companion (Windows/HighRise-Merge.ps1) targets Windows
+  # PowerShell 5.1, which only exists on Windows — so its dry run is exercised
+  # here under both 5.1 and PowerShell 7. -DryRun never touches Outlook.
+  windows-dry-run:
+    name: Windows merge tool dry run
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Dry run under Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $out = & .\Windows\HighRise-Merge.ps1 -Csv .\Examples\sample-recipients.csv -Template .\Windows\Examples\sample-template.txt -DryRun *>&1 | Out-String
+          Write-Host $out
+          if ($out -notlike '*3 message(s) would be drafted, 2 blocked*') { throw 'Unexpected dry-run summary' }
+          if ($out -notlike '*Quick question about Acme, Inc.*') { throw 'Merged subject missing from output' }
+          if ($out -notlike '*Invalid email address: not-an-email*') { throw 'Invalid-email row was not blocked' }
+          if ($out -notlike '*Missing data for: Company*') { throw 'Missing-field row was not blocked' }
+
+      - name: Dry run under PowerShell 7
+        shell: pwsh
+        run: |
+          $out = & .\Windows\HighRise-Merge.ps1 -Csv .\Examples\sample-recipients.csv -Template .\Windows\Examples\sample-template.txt -DryRun *>&1 | Out-String
+          Write-Host $out
+          if ($out -notlike '*3 message(s) would be drafted, 2 blocked*') { throw 'Unexpected dry-run summary' }
+          if ($out -notlike '*Quick question about Acme, Inc.*') { throw 'Merged subject missing from output' }

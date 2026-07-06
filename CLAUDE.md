@@ -59,6 +59,14 @@ so it can't break CI before the artwork exists.
 - **Release / notarization**: `.github/workflows/release.yml` (tag `v*` or manual)
   signs with Developer ID, notarizes via `notarytool`, staples, publishes the zip.
   Required secrets are documented in the workflow header and README.
+- **Windows companion**: `Windows/HighRise-Merge.ps1` re-implements the CSV →
+  `{{merge}}` → draft/send pipeline against classic Outlook via COM (docs in
+  `Windows/README.md`). It mirrors `TemplateMergeEngine`/`MergeValueFormatter`/
+  `EmailValidator` semantics — keep them in sync when merge behavior changes.
+  Constraints: must stay Windows PowerShell 5.1-compatible **and pure ASCII**
+  (5.1 misreads UTF-8 `.ps1` files without a BOM; symbols like € are built via
+  `[char]0x20AC`). Test from any OS with `-DryRun` (works under Linux `pwsh`,
+  no Outlook needed); CI's `windows-dry-run` job runs it under real 5.1 + 7.
 
 ## Conventions
 - Branch for this work: `claude/magical-mendel-11m60a`; PR #1 (draft).
