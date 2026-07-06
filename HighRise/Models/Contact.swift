@@ -41,3 +41,23 @@ struct Contact: Identifiable, Hashable {
         return email
     }
 }
+
+extension Contact {
+    /// A realistic placeholder recipient for previewing a template before a real
+    /// list is imported. Values mirror the CSV starter template so the preview
+    /// looks like a genuine send.
+    static let sample = Contact(fields: [
+        "First Name": "Jordan", "Last Name": "Avery", "Full Name": "Jordan Avery",
+        "Job Title": "Director of Procurement", "Email": "jordan.avery@northwind.example",
+        "Company": "Northwind Traders", "Department": "Operations",
+        "Website": "https://northwind.example", "Industry": "Logistics",
+        "Phone": "+1 555 0148", "Address": "200 Harbor Way", "City": "Seattle",
+        "State": "WA", "ZIP": "98101", "Country": "USA",
+        "Product Name": "Fleet Analytics Suite", "Quote Number": "Q-2026-0417",
+        "Invoice Number": "INV-88213", "PO Number": "PO-55012", "Amount": "$24,500",
+        "Currency": "USD", "Quantity": "25", "Discount": "10%",
+        "Quote Date": "2026-06-22", "Due Date": "2026-07-22", "Renewal Date": "2027-06-22",
+        "Meeting Date": "2026-06-30", "Account Manager": "Riley Chen",
+        "Sales Rep": "Sam Patel", "Next Step": "Schedule a 30-minute renewal review"
+    ], email: "jordan.avery@northwind.example")
+}
