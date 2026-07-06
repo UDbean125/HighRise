@@ -115,7 +115,49 @@ struct SendView: View {
                 checkItem(ready > 0, "At least one recipient is ready")
                 checkItem(score >= 75, score >= 75 ? "Content looks inbox-friendly" : "Content check flags some issues")
                 checkItem(coordinator.missingAttachments.isEmpty, coordinator.missingAttachments.isEmpty ? "All attachments found" : "Some attachments are missing")
+
+                Divider()
+                Button {
+                    exportPreSendReport()
+                } label: {
+                    Label("Export pre-send report…", systemImage: "square.and.arrow.up")
+                        .frame(maxWidth: .infinity)
+                }
+                .controlSize(.large)
+                .help("Save a plain-text summary of exactly what's about to go out")
+                if let reportStatus {
+                    Text(reportStatus).font(.caption).foregroundStyle(.secondary)
+                }
             }
+        }
+    }
+
+    @State private var reportStatus: String?
+
+    private func exportPreSendReport() {
+        let input = PreSendReport.Input(
+            generatedAtLabel: Date.now.formatted(date: .abbreviated, time: .shortened),
+            client: coordinator.selectedClient,
+            senderIdentity: coordinator.senderIdentity,
+            mode: coordinator.sendMode,
+            provider: coordinator.sendingProvider,
+            template: coordinator.template,
+            previews: coordinator.previews,
+            throttle: coordinator.throttle,
+            attachmentNames: coordinator.attachments.map(\.lastPathComponent)
+        )
+        let report = PreSendReport.plainText(input)
+
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "HighRise-pre-send-report.txt"
+        panel.allowedContentTypes = [.plainText]
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try report.write(to: url, atomically: true, encoding: .utf8)
+            reportStatus = "Report saved to \(url.lastPathComponent)."
+        } catch {
+            reportStatus = "Couldn't save the report: \(error.localizedDescription)"
         }
     }
 
