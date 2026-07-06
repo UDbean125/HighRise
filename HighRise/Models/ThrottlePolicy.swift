@@ -47,6 +47,37 @@ struct ThrottlePolicy: Equatable {
         }
         return delay
     }
+
+    /// The expected wall-clock seconds a run of `count` messages spends *paused*
+    /// (the scripted send itself is near-instant per message). Uses the mean
+    /// jitter — half its maximum — since each real per-message draw is random.
+    /// Matches the sum of `delayAfter` in expectation, so the Send screen's
+    /// estimate lines up with what actually happens.
+    func expectedDuration(forCount count: Int) -> Double {
+        guard count > 1 else { return 0 }
+        let gaps = count - 1
+        var total = Double(gaps) * (baseDelay + jitter / 2)
+        if batchSize > 0 {
+            total += Double(gaps / batchSize) * batchPause
+        }
+        return total
+    }
+
+    /// A compact human label for a duration in seconds ("instant", "~45s",
+    /// "~3 min", "~1 hr 5 min").
+    static func humanDuration(_ seconds: Double) -> String {
+        let total = Int(seconds.rounded())
+        if total <= 0 { return "instant" }
+        if total < 60 { return "~\(total)s" }
+        let minutes = total / 60
+        if minutes < 60 {
+            let rem = total % 60
+            return rem == 0 ? "~\(minutes) min" : "~\(minutes) min \(rem)s"
+        }
+        let hours = minutes / 60
+        let remMin = minutes % 60
+        return remMin == 0 ? "~\(hours) hr" : "~\(hours) hr \(remMin) min"
+    }
 }
 
 /// The mail provider behind the user's account, used only to warn when a run

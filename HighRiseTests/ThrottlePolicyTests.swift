@@ -50,6 +50,33 @@ struct ThrottlePolicyTests {
         #expect(policy.batchSize == 0)
         #expect(policy.batchPause == 0)
     }
+
+    @Test("Expected duration sums the gaps between messages")
+    func expectedDurationBaseAndJitter() {
+        // 10 messages → 9 gaps. baseDelay 2 + mean jitter (4/2=2) = 4s per gap.
+        let policy = ThrottlePolicy(baseDelay: 2, jitter: 4)
+        #expect(policy.expectedDuration(forCount: 10) == 36)      // 9 * 4
+        #expect(policy.expectedDuration(forCount: 1) == 0)        // nothing to wait on
+        #expect(policy.expectedDuration(forCount: 0) == 0)
+    }
+
+    @Test("Expected duration includes batch pauses")
+    func expectedDurationWithBatches() {
+        // 100 messages, base 1, no jitter, pause 60s every 25.
+        // 99 gaps * 1 = 99, plus floor(99/25)=3 batch pauses * 60 = 180 → 279.
+        let policy = ThrottlePolicy(baseDelay: 1, jitter: 0, batchSize: 25, batchPause: 60)
+        #expect(policy.expectedDuration(forCount: 100) == 279)
+    }
+
+    @Test("humanDuration formats seconds, minutes, and hours")
+    func humanDurationFormatting() {
+        #expect(ThrottlePolicy.humanDuration(0) == "instant")
+        #expect(ThrottlePolicy.humanDuration(45) == "~45s")
+        #expect(ThrottlePolicy.humanDuration(120) == "~2 min")
+        #expect(ThrottlePolicy.humanDuration(150) == "~2 min 30s")
+        #expect(ThrottlePolicy.humanDuration(3600) == "~1 hr")
+        #expect(ThrottlePolicy.humanDuration(3900) == "~1 hr 5 min")
+    }
 }
 
 struct SendingProviderTests {
