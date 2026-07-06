@@ -13,6 +13,30 @@ raw `{{placeholder}}` is never leaked to a recipient, and rows with missing
 data, an invalid address, a duplicate address, or a missing attachment file are
 blocked and reported instead of sent.
 
+## Easy mode — the clickable window (no commands)
+
+If you don't want to touch PowerShell at all, use the point-and-click window.
+It does everything the command line does, with Browse buttons and three big
+buttons — **Preview**, **Create Drafts**, **Send** — instead of typed commands.
+
+1. Make sure these three files are together in one folder: **`HighRise.cmd`**,
+   **`HighRise-GUI.ps1`**, and **`HighRise-Merge.ps1`**.
+2. **Double-click `HighRise.cmd`.** The HighRise window opens.
+3. In the window: **Browse** to your recipients list, then **Browse** to your
+   template (or click **New template…** to create one — it opens in Notepad
+   with instructions). Optionally type your own address in the BCC box.
+4. Click **Preview** to see every message safely (nothing is created), then
+   **Create Drafts** to drop one draft per recipient into Outlook. Click
+   **Open Outlook** to review and send them.
+
+Want it even faster? Right-click `HighRise.cmd` → **Send to ▸ Desktop (create
+shortcut)**, then rename the desktop shortcut to "HighRise" — now it's a
+double-click icon on your desktop. (You can also right-click that shortcut →
+**Pin to taskbar**.)
+
+The rest of this page is the command-line reference — you only need it if you
+want the extra options (per-recipient attachments, CC, throttling, reports).
+
 ## What you need
 
 - Windows 10 or 11 — PowerShell 5.1 is already preinstalled; nothing to install.
@@ -21,10 +45,12 @@ blocked and reported instead of sent.
   yet — see Troubleshooting below.
 - Two files of your own: a recipients CSV and a template text file.
 
-To get the script: on the GitHub repo page choose **Code ▸ Download ZIP** (or
-clone), then copy `Windows\HighRise-Merge.ps1` anywhere you like — it has no
-other dependencies. If Windows marks the downloaded file as blocked, run
-`Unblock-File .\HighRise-Merge.ps1` once.
+To get the files: on the GitHub repo page choose **Code ▸ Download ZIP** (or
+clone), then copy the whole `Windows\` folder anywhere you like — for the
+clickable window keep `HighRise.cmd`, `HighRise-GUI.ps1`, and
+`HighRise-Merge.ps1` together. There are no other dependencies. If Windows
+marks a downloaded file as blocked, right-click it → **Properties** → tick
+**Unblock**, or run `Unblock-File .\HighRise-*.ps1` once.
 
 ## Quick start
 
