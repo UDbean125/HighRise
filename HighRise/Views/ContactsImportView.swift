@@ -105,6 +105,14 @@ struct ContactsImportView: View {
                         .font(.callout).foregroundStyle(.green)
                 }
 
+                let dupeColumns = ColumnHealth.duplicateHeaders(coordinator.importedHeaders)
+                if !dupeColumns.isEmpty {
+                    Label("Duplicate column\(dupeColumns.count == 1 ? "" : "s"): \(dupeColumns.joined(separator: ", ")) — only the last of each is used. Rename them to keep both.",
+                          systemImage: "square.on.square.dashed")
+                        .font(.callout).foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
                 Divider()
                 Text("Column completeness")
                     .font(.subheadline.weight(.semibold))
