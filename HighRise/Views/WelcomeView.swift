@@ -9,6 +9,8 @@ struct WelcomeView: View {
 
     /// Called when the user chooses to start from a template on the last page.
     var onStartWithTemplate: () -> Void = {}
+    /// Called when the user chooses the interactive walkthrough of the dashboard.
+    var onTakeTour: () -> Void = {}
 
     @State private var page = 0
 
@@ -55,12 +57,12 @@ struct WelcomeView: View {
 
             ZStack {
                 Circle()
-                    .fill(Brand.accent.opacity(0.14))
+                    .fill(Brand.gradient)
                     .frame(width: 108, height: 108)
+                    .shadow(color: Brand.accent.opacity(0.4), radius: 14, y: 5)
                 Image(systemName: pages[page].systemImage)
                     .font(.system(size: 46, weight: .semibold))
-                    .foregroundStyle(Brand.accent)
-                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.white)
             }
             .transition(.scale.combined(with: .opacity))
             .id(pages[page].id)
@@ -104,16 +106,10 @@ struct WelcomeView: View {
     private var controls: some View {
         VStack(spacing: 12) {
             Divider()
-            HStack {
-                if page > 0 {
-                    Button("Back") { withAnimation(.easeInOut) { page -= 1 } }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Button("Skip") { finish() }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                }
+            HStack(spacing: 10) {
+                Button("Skip") { finish() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
 
                 Spacer()
 
@@ -123,7 +119,7 @@ struct WelcomeView: View {
                     }
                     .buttonStyle(.bordered)
 
-                    Button("Start composing") { finish() }
+                    Button("Take the tour") { onTakeTour() }
                         .buttonStyle(.borderedProminent)
                         .keyboardShortcut(.defaultAction)
                 } else {

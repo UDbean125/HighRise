@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// The window shell: a branded progress rail down the side and the active
 /// stage's content on the right, with a persistent footer for moving between
@@ -21,11 +22,17 @@ struct ContentView: View {
         }
         .navigationTitle("HighRise")
         .tint(Brand.accent)
+        // The interactive walkthrough spotlights real controls; it reads their
+        // frames from the whole window via anchor preferences.
+        .overlayPreferenceValue(CoachAnchorKey.self) { anchors in
+            CoachMarkOverlay(anchors: anchors)
+        }
         .onAppear {
             if !hasSeenWelcomeTour { coordinator.isShowingWelcome = true }
         }
         .sheet(isPresented: $coordinator.isShowingWelcome) {
-            WelcomeView(onStartWithTemplate: { coordinator.beginWithStarterTemplate() })
+            WelcomeView(onStartWithTemplate: { coordinator.beginWithStarterTemplate() },
+                        onTakeTour: { coordinator.startTour() })
                 .onDisappear { hasSeenWelcomeTour = true }
         }
     }
@@ -59,6 +66,7 @@ private struct StageSidebar: View {
                 }
             }
             .padding(12)
+            .coachAnchor("sidebar.rail")
             Spacer()
         }
         .frame(maxHeight: .infinity, alignment: .top)
@@ -66,9 +74,12 @@ private struct StageSidebar: View {
 
     private var brandHeader: some View {
         HStack(spacing: 10) {
-            Image(systemName: "building.2.fill")
-                .font(.title2)
-                .foregroundStyle(Brand.accent)
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 28, height: 28)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .shadow(color: .black.opacity(0.12), radius: 1, y: 0.5)
             VStack(alignment: .leading, spacing: 1) {
                 Text("HighRise").font(.headline)
                 Text("Mail merge").font(.caption).foregroundStyle(.secondary)
@@ -190,6 +201,7 @@ private struct StageFooter: View {
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
                 .disabled(!enabled)
+                .coachAnchor("footer.continue")
             }
         }
         .padding(.horizontal, 20)
