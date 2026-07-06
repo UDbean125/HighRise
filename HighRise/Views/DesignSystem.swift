@@ -17,9 +17,9 @@ enum Brand {
     })
 
     /// The deep end of the logo's blue gradient — for gradient fills and depth.
-    static let accentDeep = Color(srgbRed: 0.12, green: 0.44, blue: 0.72, alpha: 1) // #1E6FB8
+    static let accentDeep = Color(red: 0.12, green: 0.44, blue: 0.72) // #1E6FB8
     /// The light sky-blue highlight from the logo.
-    static let accentSoft = Color(srgbRed: 0.47, green: 0.75, blue: 0.94, alpha: 1) // #78C0F0
+    static let accentSoft = Color(red: 0.47, green: 0.75, blue: 0.94) // #78C0F0
 
     /// The signature HighRise gradient (light → azure → deep), used on hero
     /// surfaces, the onboarding, and the app's brand marks.
