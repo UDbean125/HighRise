@@ -12,12 +12,15 @@ import os
 final class HighRiseCoordinator: ObservableObject {
 
     enum Stage: Int, CaseIterable {
-        case compose, contacts, review, send
+        case home, compose, contacts, review, send
+
+        /// The four numbered workflow steps, excluding the Home hub.
+        static var workflow: [Stage] { [.compose, .contacts, .review, .send] }
     }
 
     // MARK: - Published state
 
-    @Published var stage: Stage = .compose
+    @Published var stage: Stage = .home
     @Published var template = EmailTemplate()
 
     /// Drives the first-run (and replayable) welcome tour sheet.

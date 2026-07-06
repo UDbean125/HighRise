@@ -69,7 +69,19 @@ so it can't break CI before the artwork exists.
   no Outlook needed); CI's `windows-dry-run` job runs it under real 5.1 + 7.
 
 ## Conventions
-- Branch for this work: `claude/magical-mendel-11m60a`; PR #1 (draft).
+- Branch for this work: `claude/tool-feature-benchmarking-m241ea`.
 - AppleScript string escaping (`AppleScriptBuilder.stringLiteral`) is the app's
   security boundary — keep it unit-tested.
 - Never leak a raw `{{placeholder}}` to a recipient; merge blocks unresolved rows.
+
+## Working preferences (owner-approved)
+The owner has granted standing approval to proceed autonomously through the
+normal build loop for this project — reading/searching the repo, editing code,
+`xcodegen generate`, `swift`/`xcodebuild`, committing, pushing to the feature
+branch, and opening/updating draft PRs — without pausing for per-step
+confirmation. Keep moving through implement → test → push → draft PR → confirm
+CI, and only stop to ask when something is genuinely destructive, irreversible,
+outside this repo, or a real design fork.
+Note: this is a documented *preference*, not a security grant. Actual command
+permissions are enforced by the Claude Code harness via `.claude/settings.json`,
+which only the owner can widen — the agent cannot self-authorize broader access.

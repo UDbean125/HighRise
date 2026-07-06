@@ -16,8 +16,11 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 stageContent
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                Divider()
-                StageFooter()
+                // Home is a hub, not a step in the linear flow — no Back/Continue.
+                if coordinator.stage != .home {
+                    Divider()
+                    StageFooter()
+                }
             }
         }
         .navigationTitle("HighRise")
@@ -40,6 +43,7 @@ struct ContentView: View {
     @ViewBuilder
     private var stageContent: some View {
         switch coordinator.stage {
+        case .home:     HomeView()
         case .compose:  TemplateEditorView()
         case .contacts: ContactsImportView()
         case .review:   ReviewView()
@@ -61,7 +65,9 @@ private struct StageSidebar: View {
             brandHeader
             Divider().padding(.horizontal, 12)
             VStack(spacing: 2) {
-                ForEach(HighRiseCoordinator.Stage.allCases, id: \.self) { stage in
+                homeRow
+                Divider().padding(.vertical, 6).padding(.horizontal, 8)
+                ForEach(HighRiseCoordinator.Stage.workflow, id: \.self) { stage in
                     stepRow(stage)
                 }
             }
@@ -102,13 +108,40 @@ private struct StageSidebar: View {
         .padding(16)
     }
 
+    /// The Home hub row — a house icon rather than a numbered badge, since it
+    /// isn't a step in the linear flow.
+    private var homeRow: some View {
+        let isCurrent = coordinator.stage == .home
+        return Button {
+            coordinator.stage = .home
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "house.fill")
+                    .foregroundStyle(isCurrent ? Brand.accent : .secondary)
+                    .frame(width: 24)
+                Text("Home")
+                    .font(.callout.weight(isCurrent ? .semibold : .regular))
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 6)
+            .padding(.horizontal, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isCurrent ? Brand.accent.opacity(0.14) : .clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isCurrent ? [.isSelected] : [])
+    }
+
     private func stepRow(_ stage: HighRiseCoordinator.Stage) -> some View {
         let isCurrent = stage == coordinator.stage
         return Button {
             if isEnabled(stage) { coordinator.stage = stage }
         } label: {
             HStack(spacing: 10) {
-                StepBadge(number: stage.rawValue + 1, state: badgeState(stage))
+                StepBadge(number: stage.rawValue, state: badgeState(stage))
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title(for: stage))
                         .font(.callout.weight(isCurrent ? .semibold : .regular))
@@ -142,6 +175,7 @@ private struct StageSidebar: View {
 
     private func title(for stage: HighRiseCoordinator.Stage) -> String {
         switch stage {
+        case .home:     return "Home"
         case .compose:  return "Compose"
         case .contacts: return "Contacts"
         case .review:   return "Review"
@@ -151,6 +185,8 @@ private struct StageSidebar: View {
 
     private func status(for stage: HighRiseCoordinator.Stage) -> String {
         switch stage {
+        case .home:
+            return "Dashboard"
         case .compose:
             return coordinator.canProceedToContacts ? "Template ready" : "Write your email"
         case .contacts:
@@ -170,6 +206,7 @@ private struct StageSidebar: View {
 
     private func isEnabled(_ stage: HighRiseCoordinator.Stage) -> Bool {
         switch stage {
+        case .home:     return true
         case .compose:  return true
         case .contacts: return coordinator.canProceedToContacts
         case .review:   return coordinator.canProceedToContacts && coordinator.canProceedToReview
@@ -186,11 +223,12 @@ private struct StageFooter: View {
 
     var body: some View {
         HStack {
-            if coordinator.stage != .compose {
+            if coordinator.stage != .home {
                 Button {
                     goBack()
                 } label: {
-                    Label("Back", systemImage: "chevron.left")
+                    Label(coordinator.stage == .compose ? "Home" : "Back",
+                          systemImage: "chevron.left")
                 }
                 .keyboardShortcut("[", modifiers: .command)
             }
@@ -229,6 +267,8 @@ private struct StageFooter: View {
 
     private var forwardAction: (String, () -> Void, Bool)? {
         switch coordinator.stage {
+        case .home:
+            return nil
         case .compose:
             return ("Continue to Contacts", { coordinator.stage = .contacts }, coordinator.canProceedToContacts)
         case .contacts:
