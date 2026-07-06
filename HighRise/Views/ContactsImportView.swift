@@ -23,14 +23,9 @@ struct ContactsImportView: View {
                         .foregroundStyle(.red)
                 }
 
-                if !coordinator.availableWorksheets.isEmpty {
-                    worksheetPicker
-                }
-
                 if !coordinator.contacts.isEmpty {
-                    emailColumnPicker
-                    attachmentColumnPicker
-                    summaryAndPreview
+                    columnsCard
+                    previewCard
                 }
             }
             .padding(24)
@@ -78,6 +73,7 @@ struct ContactsImportView: View {
             } label: {
                 Label("Choose File…", systemImage: "doc.badge.plus")
             }
+            .buttonStyle(.borderedProminent)
             .help("CSV, Excel (.xlsx), Word (.docx), or PDF")
             Button {
                 showPaste.toggle()
@@ -170,7 +166,7 @@ struct ContactsImportView: View {
 
     private var worksheetPicker: some View {
         HStack {
-            Text("Worksheet").font(.headline)
+            Text("Worksheet").font(.subheadline).foregroundStyle(.secondary)
             Picker("Worksheet", selection: Binding(
                 get: { coordinator.selectedWorksheet ?? "" },
                 set: { if !$0.isEmpty { coordinator.selectWorksheet($0) } }
@@ -187,9 +183,29 @@ struct ContactsImportView: View {
         }
     }
 
+    private var columnsCard: some View {
+        SectionCard("Columns", systemImage: "tablecells",
+                    subtitle: "Tell HighRise which columns to use.") {
+            VStack(alignment: .leading, spacing: 12) {
+                if !coordinator.availableWorksheets.isEmpty {
+                    worksheetPicker
+                    Divider()
+                }
+                emailColumnPicker
+                attachmentColumnPicker
+            }
+        }
+    }
+
+    private var previewCard: some View {
+        SectionCard("Preview", systemImage: "list.bullet.rectangle") {
+            summaryAndPreview
+        }
+    }
+
     private var emailColumnPicker: some View {
         HStack {
-            Text("Email column").font(.headline)
+            Text("Email column").font(.subheadline).foregroundStyle(.secondary)
             Picker("Email column", selection: Binding(
                 get: { coordinator.emailColumn ?? "" },
                 set: { coordinator.emailColumn = $0.isEmpty ? nil : $0 }
@@ -206,7 +222,7 @@ struct ContactsImportView: View {
 
     private var attachmentColumnPicker: some View {
         HStack {
-            Text("Attachment column").font(.headline)
+            Text("Attachment column").font(.subheadline).foregroundStyle(.secondary)
             Picker("Attachment column", selection: Binding(
                 get: { coordinator.attachmentColumn ?? "" },
                 set: { coordinator.attachmentColumn = $0.isEmpty ? nil : $0 }
@@ -231,7 +247,6 @@ struct ContactsImportView: View {
                     .foregroundStyle(.green)
                     .font(.callout)
             }
-            Text("Preview").font(.headline)
             Table(coordinator.contacts.prefix(50).map { $0 }) {
                 TableColumn("Name", value: \.displayName)
                 TableColumn("Email", value: \.email)

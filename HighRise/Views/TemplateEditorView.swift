@@ -151,8 +151,7 @@ struct TemplateEditorView: View {
             }
             .font(.subheadline)
         }
-        .padding(14)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+        .card(padding: 14)
     }
 
     /// Appends `field.token` to whichever box is focused (body by default),
