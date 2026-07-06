@@ -99,6 +99,14 @@ enum ContentLinter {
                                     systemImage: "hand.wave"))
         }
 
+        for text in [template.subject, template.body] {
+            if let warning = PlaceholderCheck.malformedWarning(in: text) {
+                findings.append(Finding(severity: .warning, message: warning,
+                                        systemImage: "exclamationmark.triangle"))
+                break
+            }
+        }
+
         return findings
     }
 

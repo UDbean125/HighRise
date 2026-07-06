@@ -107,6 +107,10 @@ struct TemplateEditorView: View {
                     Text("Use {{FieldName}} anywhere to drop in a contact's details, e.g.\n\nHi {{First Name}},\n\nI've been following {{Company}} and wanted to reach out about {{Product Name}}…")
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                } else {
+                    let stats = WordCount.of(coordinator.template.body)
+                    Text(WordCount.caption(stats))
+                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
 
