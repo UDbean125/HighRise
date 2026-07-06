@@ -12,28 +12,24 @@ struct SendView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                header
-                clientPicker
-                modePicker
-                attachmentControls
-                envelopeControls
-                if coordinator.sendMode == .send {
-                    throttleControls
+            VStack(alignment: .leading, spacing: 16) {
+                hero
+                if coordinator.selectedClient == .appleMail {
+                    senderCard
                 }
-                Divider()
-                testSendRow
-                Divider()
-                pdfRow
-                Divider()
-                actionRow
-                scheduleRow
+                attachmentsCard
+                recipientsCard
+                if coordinator.sendMode == .send {
+                    pacingCard
+                }
+                toolsCard
+                scheduleCard
                 if !coordinator.outcomes.isEmpty {
-                    resultsList
+                    resultsCard
                 }
             }
             .padding(24)
-            .frame(maxWidth: 720, alignment: .leading)
+            .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .confirmationDialog(confirmTitle, isPresented: $showConfirm, titleVisibility: .visible) {
@@ -46,74 +42,108 @@ struct SendView: View {
         }
     }
 
-    private var header: some View {
-        let count = coordinator.sendablePreviews.count
-        return VStack(alignment: .leading, spacing: 4) {
-            Text("Send").font(.title2).bold()
-            Text("\(count) personalized message\(count == 1 ? "" : "s") ready · \(coordinator.blockedPreviews.count) excluded.")
-                .foregroundStyle(.secondary)
-        }
-    }
+    // MARK: - Hero (summary + client + mode + primary action)
 
-    private var clientPicker: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Email client").font(.headline)
-            Picker("Email client", selection: $coordinator.selectedClient) {
-                ForEach(MailClient.allCases) { client in
-                    Label(client.rawValue, systemImage: client.symbolName).tag(client)
-                }
+    private var hero: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Send").font(.title2.bold())
+                Text("Review your options, then create drafts or send.")
+                    .font(.callout).foregroundStyle(.secondary)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            if coordinator.selectedClient == .appleMail && coordinator.template.format == .html {
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("Apple Mail's automation only reliably sets plain text. For full HTML, use Outlook — or export .eml drafts below.",
-                          systemImage: "info.circle")
-                        .font(.callout).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Button {
-                        exportHTMLDrafts()
-                    } label: {
-                        Label("Export HTML drafts (.eml)…  ·  experimental", systemImage: "curlybraces")
-                    }
-                    .disabled(coordinator.sendablePreviews.isEmpty)
-                    if let emlStatus {
-                        Text(emlStatus).font(.callout).foregroundStyle(.secondary)
+
+            HStack(spacing: 10) {
+                StatTile(value: "\(coordinator.sendablePreviews.count)", label: "Ready to send",
+                         systemImage: "checkmark.circle.fill", tint: .green)
+                StatTile(value: "\(coordinator.blockedPreviews.count)", label: "Excluded",
+                         systemImage: "exclamationmark.triangle.fill", tint: .orange)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Send with").font(.subheadline).foregroundStyle(.secondary)
+                Picker("Email client", selection: $coordinator.selectedClient) {
+                    ForEach(MailClient.allCases) { client in
+                        Label(client.rawValue, systemImage: client.symbolName).tag(client)
                     }
                 }
-            }
-            if coordinator.selectedClient == .appleMail {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("From account (optional)").font(.subheadline)
-                    TextField("Jordan <jordan@work.com>", text: $coordinator.senderIdentity)
-                        .textFieldStyle(.roundedBorder).frame(maxWidth: 320)
-                    Text("Must match one of your configured Mail accounts. Leave blank for your default.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                .padding(.top, 4)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Signature (optional)").font(.subheadline)
-                    TextField("signature name, e.g. Work", text: $coordinator.signatureName)
-                        .textFieldStyle(.roundedBorder).frame(maxWidth: 320)
-                    Text("Must match a signature configured in Mail. Leave blank for none.")
-                        .font(.caption).foregroundStyle(.secondary)
+                .pickerStyle(.segmented).labelsHidden()
+                if coordinator.selectedClient == .appleMail && coordinator.template.format == .html {
+                    htmlNote
                 }
             }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Mode").font(.subheadline).foregroundStyle(.secondary)
+                Picker("Mode", selection: $coordinator.sendMode) {
+                    ForEach(SendMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.radioGroup).labelsHidden()
+                Text(coordinator.sendMode.explanation)
+                    .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Divider()
+            actionRow
         }
+        .card(padding: 20)
     }
 
-    private var modePicker: some View {
+    private var htmlNote: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Mode").font(.headline)
-            Picker("Mode", selection: $coordinator.sendMode) {
-                ForEach(SendMode.allCases) { mode in
-                    Text(mode.rawValue).tag(mode)
-                }
-            }
-            .pickerStyle(.radioGroup)
-            .labelsHidden()
-            Text(coordinator.sendMode.explanation)
+            Label("Apple Mail's automation only reliably sets plain text. For full HTML, use Outlook — or export .eml drafts.",
+                  systemImage: "info.circle")
                 .font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                exportHTMLDrafts()
+            } label: {
+                Label("Export HTML drafts (.eml)…  ·  experimental", systemImage: "curlybraces")
+            }
+            .disabled(coordinator.sendablePreviews.isEmpty)
+            if let emlStatus {
+                Text(emlStatus).font(.callout).foregroundStyle(.secondary)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Brand.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    // MARK: - From & signature (Apple Mail)
+
+    private var senderCard: some View {
+        CollapsibleCard("From & signature", systemImage: "person.crop.circle") {
+            VStack(alignment: .leading, spacing: 12) {
+                labeledField("From account", placeholder: "Jordan <jordan@work.com>",
+                             text: $coordinator.senderIdentity,
+                             hint: "Must match one of your configured Mail accounts. Blank = your default.")
+                labeledField("Signature", placeholder: "signature name, e.g. Work",
+                             text: $coordinator.signatureName,
+                             hint: "Must match a signature configured in Mail. Blank = none.")
+            }
+        }
+    }
+
+    private func labeledField(_ label: String, placeholder: String,
+                              text: Binding<String>, hint: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(.subheadline)
+            TextField(placeholder, text: text)
+                .textFieldStyle(.roundedBorder).frame(maxWidth: 340)
+            Text(hint).font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: - Pacing
+
+    private var pacingCard: some View {
+        CollapsibleCard("Pacing", systemImage: "timer",
+                        badge: coordinator.throttle.baseDelay > 0 ? "on" : nil) {
+            throttleControls
         }
     }
 
@@ -170,45 +200,47 @@ struct SendView: View {
         }
     }
 
-    private var attachmentControls: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Attachments").font(.headline)
-                Spacer()
-                Button {
-                    addAttachments()
-                } label: {
-                    Label("Add Files…", systemImage: "paperclip")
-                }
-            }
-            Text("The same file(s) are attached to every message.")
-                .font(.callout).foregroundStyle(.secondary)
-
-            ForEach(coordinator.attachments, id: \.self) { url in
-                let missing = coordinator.missingAttachments.contains(url)
+    private var attachmentsCard: some View {
+        CollapsibleCard("Attachments", systemImage: "paperclip",
+                        badge: coordinator.attachments.isEmpty ? nil : "\(coordinator.attachments.count)") {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Image(systemName: missing ? "exclamationmark.triangle.fill" : "doc")
-                        .foregroundStyle(missing ? .orange : .secondary)
-                    Text(url.lastPathComponent).lineLimit(1)
-                    if missing {
-                        Text("missing").font(.caption).foregroundStyle(.orange)
-                    }
+                    Text("The same file(s) are attached to every message.")
+                        .font(.callout).foregroundStyle(.secondary)
                     Spacer()
                     Button {
-                        coordinator.attachments.removeAll { $0 == url }
+                        addAttachments()
                     } label: {
-                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                        Label("Add Files…", systemImage: "paperclip")
                     }
-                    .buttonStyle(.borderless)
-                    .help("Remove attachment")
                 }
-                .padding(.vertical, 1)
-            }
 
-            if let warning = coordinator.attachmentSizeWarning {
-                Label(warning, systemImage: "exclamationmark.triangle")
-                    .font(.callout).foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(coordinator.attachments, id: \.self) { url in
+                    let missing = coordinator.missingAttachments.contains(url)
+                    HStack {
+                        Image(systemName: missing ? "exclamationmark.triangle.fill" : "doc")
+                            .foregroundStyle(missing ? .orange : .secondary)
+                        Text(url.lastPathComponent).lineLimit(1)
+                        if missing {
+                            Text("missing").font(.caption).foregroundStyle(.orange)
+                        }
+                        Spacer()
+                        Button {
+                            coordinator.attachments.removeAll { $0 == url }
+                        } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Remove attachment")
+                    }
+                    .padding(.vertical, 1)
+                }
+
+                if let warning = coordinator.attachmentSizeWarning {
+                    Label(warning, systemImage: "exclamationmark.triangle")
+                        .font(.callout).foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }
@@ -228,36 +260,31 @@ struct SendView: View {
             + ". Double-click one to open it in Mail."
     }
 
-    private var pdfRow: some View {
-        DisclosureGroup {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Generate one personalized PDF per recipient from the message body — for invoices, offer letters, or certificates. Saved locally; never sent anywhere on its own.")
-                    .font(.callout).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 8) {
-                    Text("Filename").font(.subheadline)
-                    TextField("{{Full Name}} - letter.pdf", text: $coordinator.pdfFilenamePattern)
-                        .textFieldStyle(.roundedBorder).frame(maxWidth: 280)
-                }
-                HStack(spacing: 8) {
-                    Text("Password (optional)").font(.subheadline)
-                    SecureField("leave blank for none", text: $coordinator.pdfPassword)
-                        .textFieldStyle(.roundedBorder).frame(maxWidth: 200)
-                }
-                Button {
-                    exportPDFs()
-                } label: {
-                    Label("Save Personalized PDFs…", systemImage: "doc.richtext")
-                }
-                .disabled(coordinator.sendablePreviews.isEmpty)
-                if let pdfStatus {
-                    Text(pdfStatus).font(.callout).foregroundStyle(.secondary)
-                }
+    private var pdfContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Merge to PDF", systemImage: "doc.richtext").font(.subheadline.weight(.semibold))
+            Text("Generate one personalized PDF per recipient from the message body — for invoices, offer letters, or certificates. Saved locally; never sent anywhere on its own.")
+                .font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Text("Filename").font(.subheadline)
+                TextField("{{Full Name}} - letter.pdf", text: $coordinator.pdfFilenamePattern)
+                    .textFieldStyle(.roundedBorder).frame(maxWidth: 280)
             }
-            .padding(.top, 8)
-        } label: {
-            Label("Merge to PDF", systemImage: "doc.richtext")
-                .font(.headline)
+            HStack(spacing: 8) {
+                Text("Password (optional)").font(.subheadline)
+                SecureField("leave blank for none", text: $coordinator.pdfPassword)
+                    .textFieldStyle(.roundedBorder).frame(maxWidth: 200)
+            }
+            Button {
+                exportPDFs()
+            } label: {
+                Label("Save Personalized PDFs…", systemImage: "doc.richtext")
+            }
+            .disabled(coordinator.sendablePreviews.isEmpty)
+            if let pdfStatus {
+                Text(pdfStatus).font(.callout).foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -292,8 +319,9 @@ struct SendView: View {
         }
     }
 
-    private var envelopeControls: some View {
-        DisclosureGroup {
+    private var recipientsCard: some View {
+        CollapsibleCard("CC, BCC & unsubscribe", systemImage: "person.2",
+                        badge: coordinator.unsubscribeEnabled ? "unsub" : nil) {
             VStack(alignment: .leading, spacing: 10) {
                 envelopeField("CC", text: $coordinator.envelope.cc,
                               hint: "Visible to the recipient. Use a column like {{Parent Email}} or a fixed address; separate several with commas.")
@@ -312,10 +340,6 @@ struct SendView: View {
                                   hint: "e.g. “Prefer not to hear from us? Let us know:”")
                 }
             }
-            .padding(.top, 8)
-        } label: {
-            Label("CC, BCC & delivery record", systemImage: "person.2")
-                .font(.headline)
         }
     }
 
@@ -332,9 +356,19 @@ struct SendView: View {
         }
     }
 
-    private var testSendRow: some View {
+    private var toolsCard: some View {
+        CollapsibleCard("Tools", systemImage: "wrench.and.screwdriver") {
+            VStack(alignment: .leading, spacing: 16) {
+                testSendContent
+                Divider()
+                pdfContent
+            }
+        }
+    }
+
+    private var testSendContent: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Send yourself a test").font(.headline)
+            Label("Send yourself a test", systemImage: "paperplane").font(.subheadline.weight(.semibold))
             Text("Delivers one fully personalized sample — your first ready recipient — to your own address so you can check how it renders.")
                 .font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -383,44 +417,45 @@ struct SendView: View {
     }
 
     @ViewBuilder
-    private var scheduleRow: some View {
+    private var scheduleCard: some View {
         if let fireDate = coordinator.scheduledFireDate {
             HStack(spacing: 10) {
-                Image(systemName: "clock.badge.checkmark").foregroundStyle(.blue)
+                Image(systemName: "clock.badge.checkmark").font(.title3).foregroundStyle(Brand.accent)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Scheduled for \(fireDate.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.headline)
                     Text("Keep this Mac awake and HighRise open until then.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button("Cancel", role: .destructive) { coordinator.cancelSchedule() }
             }
-            .padding(10)
-            .background(Color.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+            .card()
         } else if !coordinator.isSending {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Or schedule it").font(.headline)
-                HStack(spacing: 8) {
-                    DatePicker("Start at", selection: $scheduleDate, in: Date()...)
-                        .labelsHidden()
-                    Button {
-                        coordinator.scheduleSend(at: scheduleDate)
-                    } label: {
-                        Label("Schedule", systemImage: "clock")
+            CollapsibleCard("Schedule for later", systemImage: "clock") {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        DatePicker("Start at", selection: $scheduleDate, in: Date()...)
+                            .labelsHidden()
+                        Button {
+                            coordinator.scheduleSend(at: scheduleDate)
+                        } label: {
+                            Label("Schedule", systemImage: "clock")
+                        }
+                        .disabled(!coordinator.canSend || scheduleDate <= Date())
                     }
-                    .disabled(!coordinator.canSend || scheduleDate <= Date())
+                    Text("Runs on this Mac at the chosen time — it must be awake with HighRise open. Editable and cancelable until it fires.")
+                        .font(.callout).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Text("Runs on this Mac at the chosen time — it must be awake with HighRise open. Editable and cancelable until it fires.")
-                    .font(.callout).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
 
-    private var resultsList: some View {
+    private var resultsCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Results").font(.headline)
+                Label("Results", systemImage: "list.bullet.clipboard").font(.headline)
                 Spacer()
                 if coordinator.failedCount > 0 && !coordinator.isSending {
                     Button {
@@ -448,6 +483,7 @@ struct SendView: View {
                 .padding(.vertical, 2)
             }
         }
+        .card()
     }
 
     // MARK: - Labels

@@ -44,22 +44,30 @@ struct ReviewView: View {
         let sendable = coordinator.sendablePreviews.count
         let blocked = coordinator.blockedPreviews.count
         let duplicates = coordinator.duplicateCount
-        return VStack(alignment: .leading, spacing: 4) {
-            Label("\(sendable) ready to send", systemImage: "checkmark.circle.fill")
-                .foregroundStyle(.green).font(.callout)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.seal.fill").font(.title2).foregroundStyle(.green)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("\(sendable)").font(.title2.weight(.bold).monospacedDigit())
+                    Text("ready to send").font(.caption).foregroundStyle(.secondary)
+                }
+            }
             if blocked > 0 {
-                Label("\(blocked) excluded (missing data or bad address)", systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange).font(.callout)
-            }
-            if duplicates > 0 {
-                Label("\(duplicates) duplicate\(duplicates == 1 ? "" : "s") held back", systemImage: "person.2.slash")
-                    .foregroundStyle(.orange).font(.callout)
-            }
-            if coordinator.suppressedCount > 0 {
-                Label("\(coordinator.suppressedCount) on your do-not-contact list", systemImage: "nosign")
-                    .foregroundStyle(.orange).font(.callout)
+                VStack(alignment: .leading, spacing: 2) {
+                    heldBackLine("\(blocked) excluded", "exclamationmark.triangle.fill")
+                    if duplicates > 0 {
+                        heldBackLine("\(duplicates) duplicate\(duplicates == 1 ? "" : "s") held back", "person.2.slash")
+                    }
+                    if coordinator.suppressedCount > 0 {
+                        heldBackLine("\(coordinator.suppressedCount) on do-not-contact list", "nosign")
+                    }
+                }
             }
         }
+    }
+
+    private func heldBackLine(_ text: String, _ icon: String) -> some View {
+        Label(text, systemImage: icon).font(.caption).foregroundStyle(.orange)
     }
 
     @ViewBuilder
@@ -87,17 +95,19 @@ struct ReviewView: View {
                         .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
                     }
 
-                    field("To", value: "\(preview.contact.displayName) <\(preview.contact.email)>")
-                    field("Subject", value: preview.resolvedSubject)
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Body").font(.caption).foregroundStyle(.secondary)
-                        Text(preview.resolvedBody.isEmpty ? "—" : preview.resolvedBody)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(12)
-                            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+                    VStack(alignment: .leading, spacing: 14) {
+                        field("To", value: "\(preview.contact.displayName) <\(preview.contact.email)>")
+                        Divider()
+                        field("Subject", value: preview.resolvedSubject)
+                        Divider()
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Body").font(.caption).foregroundStyle(.secondary)
+                            Text(preview.resolvedBody.isEmpty ? "—" : preview.resolvedBody)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
+                    .card()
                 }
                 .padding(20)
             }
