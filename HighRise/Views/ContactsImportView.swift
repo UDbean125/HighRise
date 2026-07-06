@@ -126,6 +126,29 @@ struct ContactsImportView: View {
                     Text("+ \(health.columnFill.count - 12) more column\(health.columnFill.count - 12 == 1 ? "" : "s"), all fuller than these.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
+
+                domainBreakdown
+            }
+        }
+    }
+
+    /// A compact "top email domains" list — only interesting when a list spans
+    /// more than one domain.
+    @ViewBuilder
+    private var domainBreakdown: some View {
+        let stats = EmailDomainStats.of(coordinator.contacts)
+        if stats.entries.count >= 2 {
+            Divider()
+            Text("Top domains").font(.subheadline.weight(.semibold))
+            ForEach(stats.entries) { entry in
+                HStack {
+                    Text(entry.domain).font(.callout).lineLimit(1)
+                        .foregroundStyle(entry.domain == "other" ? .secondary : .primary)
+                    Spacer()
+                    Text("\(entry.count)")
+                        .font(.caption.weight(.medium)).monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
