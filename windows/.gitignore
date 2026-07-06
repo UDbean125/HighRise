@@ -1,0 +1,20 @@
+# Local OAuth client config — NEVER commit (contains client secret; repo is public)
+oauth.json
+**/oauth.json
+
+# Build output
+bin/
+obj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Rider
+.idea/
+
+# Test results
+TestResults/
+[Tt]est[Rr]esults/
+*.trx

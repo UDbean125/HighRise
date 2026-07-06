@@ -1,0 +1,47 @@
+name: Windows App CI
+
+# Compiles the WinUI 3 app (HighRise.App). WinUI requires the Windows App SDK
+# and can only build on Windows, so this runs on windows-latest — it's the sole
+# build verification for the app (the Core/Mail libraries are tested separately
+# on Ubuntu in windows-core-ci.yml).
+
+on:
+  push:
+    paths:
+      - "windows/**"
+      - ".github/workflows/windows-app-ci.yml"
+  pull_request:
+    paths:
+      - "windows/**"
+      - ".github/workflows/windows-app-ci.yml"
+
+jobs:
+  app:
+    name: Build HighRise.App (WinUI 3)
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      # WinUI 3's PRI/Appx MSBuild tasks (Microsoft.Build.Packaging.Pri.Tasks.dll)
+      # ship with Visual Studio's MSBuild, not the .NET SDK — so `dotnet build`
+      # can't find them (MSB4062). Build with VS MSBuild instead. windows/global.json
+      # pins the .NET 8 SDK that MSBuild uses for the project.
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Show versions
+        working-directory: windows
+        run: |
+          dotnet --version
+          msbuild -version
+
+      - name: Restore & build (VS MSBuild)
+        working-directory: windows
+        run: msbuild src/HighRise.App/HighRise.App.csproj /restore /p:Configuration=Release /p:Platform=x64
