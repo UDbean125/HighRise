@@ -89,6 +89,7 @@ struct TemplateEditorView: View {
                     .controlSize(.large)
                     .focused($focus, equals: .subject)
                     .accessibilityLabel("Email subject")
+                subjectCounter
             }
             .coachAnchor("compose.subject")
 
@@ -327,6 +328,17 @@ struct TemplateEditorView: View {
             Text("Write it once — HighRise personalizes it for every recipient.")
                 .foregroundStyle(.secondary)
         }
+    }
+
+    /// Live character count under the subject, warning when it's long enough to
+    /// risk being clipped in a recipient's inbox.
+    private var subjectCounter: some View {
+        let stats = SubjectStats.of(coordinator.template.subject)
+        return Text(stats.isLong
+                    ? "\(stats.characters) characters — may be clipped in inboxes"
+                    : "\(stats.characters) character\(stats.characters == 1 ? "" : "s")")
+            .font(.caption)
+            .foregroundStyle(stats.isLong ? .orange : .secondary)
     }
 
     private var bodyFormatPicker: some View {
