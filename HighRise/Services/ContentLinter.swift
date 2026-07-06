@@ -92,6 +92,13 @@ enum ContentLinter {
                                     systemImage: "person.text.rectangle"))
         }
 
+        if !template.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            !GreetingCheck.opensWithGreeting(template.body) {
+            findings.append(Finding(severity: .tip,
+                                    message: "Consider opening with a greeting, like “Hi {{First Name}},”.",
+                                    systemImage: "hand.wave"))
+        }
+
         return findings
     }
 
