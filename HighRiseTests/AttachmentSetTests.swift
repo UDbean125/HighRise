@@ -43,4 +43,18 @@ struct AttachmentSetTests {
     func parsesBlank() {
         #expect(AttachmentSet.paths(fromColumnValue: "   ", homeDirectory: "/Users/me").isEmpty)
     }
+
+    @Test("Human byte labels scale from bytes to GB")
+    func humanBytes() {
+        #expect(AttachmentSet.humanBytes(0) == "0 bytes")
+        #expect(AttachmentSet.humanBytes(512) == "512 bytes")
+        #expect(AttachmentSet.humanBytes(1023) == "1023 bytes")
+        #expect(AttachmentSet.humanBytes(1024) == "1.0 KB")
+        #expect(AttachmentSet.humanBytes(1536) == "1.5 KB")
+        #expect(AttachmentSet.humanBytes(1_048_576) == "1.0 MB")
+        #expect(AttachmentSet.humanBytes(1_048_576 * 3 / 2) == "1.5 MB")
+        #expect(AttachmentSet.humanBytes(1_073_741_824) == "1.0 GB")
+        // 200 MB: at/above 100 in its unit, drop the decimal.
+        #expect(AttachmentSet.humanBytes(200 * 1_048_576) == "200 MB")
+    }
 }

@@ -26,6 +26,22 @@ enum AttachmentSet {
         urls.reduce(0) { $0 + (sizeOf($1) ?? 0) }
     }
 
+    /// A compact human size label: "0 bytes", "512 bytes", "1.5 KB", "3.4 MB".
+    /// Binary units (1 KB = 1024 bytes) to match `warningThresholdBytes`.
+    static func humanBytes(_ bytes: Int64) -> String {
+        if bytes < 1024 { return "\(bytes) bytes" }
+        let units = ["KB", "MB", "GB", "TB"]
+        var value = Double(bytes) / 1024
+        var index = 0
+        while value >= 1024 && index < units.count - 1 {
+            value /= 1024
+            index += 1
+        }
+        return value >= 100
+            ? String(format: "%.0f %@", value, units[index])
+            : String(format: "%.1f %@", value, units[index])
+    }
+
     /// A human-readable oversize warning when the total exceeds the threshold,
     /// else nil.
     static func oversizeWarning(totalBytes: Int64) -> String? {
