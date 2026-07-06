@@ -196,6 +196,17 @@ final class HighRiseCoordinator: ObservableObject {
     var sendablePreviews: [MergePreview] { previews.filter(\.isSendable) }
     var blockedPreviews: [MergePreview] { previews.filter { !$0.isSendable } }
 
+    /// A live preview of the template while composing: the first imported
+    /// recipient if a list is loaded, otherwise a realistic sample so the writer
+    /// can see the personalized result before importing anything.
+    var composePreview: MergePreview {
+        let contact = contacts.first ?? Contact.sample
+        return TemplateMergeEngine.merge(template: template, with: contact)
+    }
+
+    /// Whether `composePreview` is using the built-in sample (no list imported).
+    var composePreviewIsSample: Bool { contacts.isEmpty }
+
     /// How many rows are held back purely because they repeat an earlier
     /// address — surfaced as a distinct warning since it's a list-hygiene issue,
     /// not a per-row data problem.

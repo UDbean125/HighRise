@@ -50,6 +50,7 @@ struct TemplateEditorView: View {
                     }
                 }
 
+                livePreview
                 fieldPalette
                 variantsEditor
                 fieldsSummary
@@ -57,6 +58,44 @@ struct TemplateEditorView: View {
             .padding(24)
             .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
+        }
+    }
+
+    // MARK: - Live preview
+
+    private var livePreview: some View {
+        let preview = coordinator.composePreview
+        let isSample = coordinator.composePreviewIsSample
+        let body = coordinator.template.format == .html
+            ? HTMLTextExtractor.plainText(fromHTML: preview.resolvedBody)
+            : preview.resolvedBody
+        return SectionCard("Live preview", systemImage: "eye",
+                           subtitle: isSample ? "Sample recipient — import your list to preview real data"
+                                              : "First recipient in your list") {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Avatar(name: preview.contact.displayName)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(preview.contact.displayName).font(.subheadline.weight(.semibold))
+                        Text(preview.contact.email).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Divider()
+                Text("Subject").font(.caption).foregroundStyle(.secondary)
+                Text(preview.resolvedSubject.isEmpty ? "—" : preview.resolvedSubject)
+                    .font(.headline).textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text("Body").font(.caption).foregroundStyle(.secondary)
+                Text(body.isEmpty ? "—" : body)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if !preview.unresolvedFields.isEmpty {
+                    Label("Missing for this recipient: \(preview.unresolvedFields.joined(separator: ", "))",
+                          systemImage: "exclamationmark.triangle")
+                        .font(.caption).foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 

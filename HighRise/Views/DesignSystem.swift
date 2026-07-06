@@ -111,6 +111,60 @@ struct StatTile: View {
     }
 }
 
+// MARK: - Avatar
+
+/// A colored circle with a recipient's initials — a scannable stand-in for a
+/// photo. The color is derived deterministically from the name so the same
+/// person always gets the same hue.
+struct Avatar: View {
+    let name: String
+    var size: CGFloat = 32
+
+    var body: some View {
+        Circle()
+            .fill(color.gradient)
+            .frame(width: size, height: size)
+            .overlay(
+                Text(initials)
+                    .font(.system(size: size * 0.42, weight: .semibold))
+                    .foregroundStyle(.white)
+            )
+    }
+
+    private var initials: String {
+        let words = name.split(whereSeparator: { $0 == " " || $0 == "." || $0 == "@" })
+        let letters = words.prefix(2).compactMap { $0.first }.map(String.init).joined()
+        return letters.isEmpty ? "?" : letters.uppercased()
+    }
+
+    private var color: Color {
+        let palette: [Color] = [.blue, .purple, .pink, .orange, .teal, .indigo, .green, .red, .cyan, .mint]
+        var hash = 5381
+        for scalar in name.unicodeScalars { hash = (hash &* 33) &+ Int(scalar.value) }
+        return palette[abs(hash) % palette.count]
+    }
+}
+
+// MARK: - Status pill
+
+/// A small colored capsule label — "Ready", "Held back", etc.
+struct StatusPill: View {
+    let text: String
+    let color: Color
+    var systemImage: String?
+
+    var body: some View {
+        HStack(spacing: 3) {
+            if let systemImage { Image(systemName: systemImage).font(.caption2) }
+            Text(text).font(.caption2.weight(.medium))
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 2)
+        .background(color.opacity(0.15), in: Capsule())
+    }
+}
+
 // MARK: - Collapsible card
 
 /// A card whose contents can be folded away — used to keep secondary options
