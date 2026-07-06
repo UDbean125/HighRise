@@ -14,12 +14,105 @@ struct HomeView: View {
                 sendingFromCard
                 Text("Jump in").font(.title3.bold())
                 quickStartGrid
+                recentActivity
                 statusStrip
+                credit
             }
             .padding(28)
             .frame(maxWidth: 1080, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
         }
+    }
+
+    // MARK: - Recent activity
+
+    /// A glance back at your work: the last send's result and your most
+    /// recently saved templates, each one click from picking up where you were.
+    @ViewBuilder
+    private var recentActivity: some View {
+        let recentTemplates = coordinator.savedTemplates
+            .sorted { $0.savedAt > $1.savedAt }
+            .prefix(4)
+        if !recentTemplates.isEmpty || !coordinator.outcomes.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Recent activity").font(.title3.bold())
+                if !coordinator.outcomes.isEmpty {
+                    lastRunCard
+                }
+                if !recentTemplates.isEmpty {
+                    Text("Saved templates").font(.subheadline).foregroundStyle(.secondary)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 200, maximum: 320), spacing: 12)],
+                              spacing: 12) {
+                        ForEach(Array(recentTemplates)) { saved in
+                            recentTemplateCard(saved)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var lastRunCard: some View {
+        let ok = coordinator.outcomes.filter(\.isSuccess).count
+        return Button {
+            coordinator.stage = .send
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.title3).foregroundStyle(Brand.accent).frame(width: 26)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Last run").font(.subheadline.weight(.medium))
+                    Text("\(ok) of \(coordinator.outcomes.count) delivered — view results")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+            }
+            .card(padding: 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func recentTemplateCard(_ saved: SavedTemplate) -> some View {
+        Button {
+            coordinator.loadTemplate(saved)
+            coordinator.stage = .compose
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                Label(saved.name, systemImage: "doc.text")
+                    .font(.subheadline.weight(.medium)).lineLimit(1)
+                Text(saved.savedAt.formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .card(padding: 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Load “\(saved.name)” and open Compose")
+    }
+
+    // MARK: - Credit
+
+    /// A "made by HenSolutions LLC" mark. Shows the company logo once its image
+    /// is added to the asset catalog (`HenSolutionsLogo`); until then a tidy
+    /// text credit stands in, so the build is never blocked on the artwork.
+    private var credit: some View {
+        HStack {
+            Spacer()
+            if let logo = NSImage(named: "HenSolutionsLogo"), logo.size.width > 0 {
+                Image(nsImage: logo)
+                    .resizable().scaledToFit()
+                    .frame(maxHeight: 38)
+                    .accessibilityLabel("HenSolutions LLC")
+            } else {
+                Label("A HenSolutions LLC app", systemImage: "building.2.crop.circle")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.top, 6)
     }
 
     // MARK: - Greeting
