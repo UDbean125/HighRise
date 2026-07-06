@@ -635,6 +635,16 @@ struct SendView: View {
         } else if !coordinator.isSending {
             CollapsibleCard("Schedule for later", systemImage: "clock") {
                 VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        ForEach(SendSchedulePreset.allCases) { preset in
+                            Button {
+                                scheduleDate = SendScheduler.date(for: preset, from: Date())
+                            } label: {
+                                Label(preset.rawValue, systemImage: preset.systemImage)
+                            }
+                            .controlSize(.small)
+                        }
+                    }
                     HStack(spacing: 8) {
                         DatePicker("Start at", selection: $scheduleDate, in: Date()...)
                             .labelsHidden()
