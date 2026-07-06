@@ -12,24 +12,24 @@ struct SendView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                hero
-                if coordinator.selectedClient == .appleMail {
-                    senderCard
+            // Two-column workspace like the other stages: the options on the
+            // left, a live "ready to send?" pre-flight rail on the right.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 24) {
+                    mainColumn
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    readinessRail
+                        .frame(width: 340)
                 }
-                attachmentsCard
-                recipientsCard
-                if coordinator.sendMode == .send {
-                    pacingCard
-                }
-                toolsCard
-                scheduleCard
-                if !coordinator.outcomes.isEmpty {
-                    resultsCard
+                .frame(minWidth: 940)
+
+                VStack(alignment: .leading, spacing: 16) {
+                    readinessRail
+                    mainColumn
                 }
             }
             .padding(24)
-            .frame(maxWidth: 760, alignment: .leading)
+            .frame(maxWidth: 1320, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .confirmationDialog(confirmTitle, isPresented: $showConfirm, titleVisibility: .visible) {
@@ -42,21 +42,117 @@ struct SendView: View {
         }
     }
 
+    private var mainColumn: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            hero
+            if coordinator.selectedClient == .appleMail {
+                senderCard
+            }
+            attachmentsCard
+            recipientsCard
+            if coordinator.sendMode == .send {
+                pacingCard
+            }
+            toolsCard
+            scheduleCard
+            if !coordinator.outcomes.isEmpty {
+                resultsCard
+            }
+        }
+    }
+
+    // MARK: - Readiness rail (pre-flight)
+
+    /// A live, at-a-glance pre-flight: how many will go out, an estimated send
+    /// duration from the pacing settings, the content-check score, attachments,
+    /// the chosen client, any provider quota warning, and a short go/no-go
+    /// checklist — all before anything leaves the Mac.
+    private var readinessRail: some View {
+        let ready = coordinator.sendablePreviews.count
+        let excluded = coordinator.blockedPreviews.count
+        let findings = ContentLinter.lint(template: coordinator.template)
+        let score = ContentLinter.score(for: findings)
+        let noun = coordinator.sendMode == .send ? "ready to send" : "drafts to create"
+
+        return SectionCard("Ready to send?", systemImage: "airplane.departure",
+                           subtitle: "A quick pre-flight — nothing leaves your Mac until you confirm.") {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 12) {
+                    Image(systemName: "paperplane.fill")
+                        .font(.system(size: 30))
+                        .foregroundStyle(ready > 0 ? .green : .secondary)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("\(ready)").font(.system(size: 34, weight: .bold)).monospacedDigit()
+                        Text(noun).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if excluded > 0 {
+                    Label("\(excluded) excluded — missing data, duplicate, or opted out.",
+                          systemImage: "exclamationmark.triangle")
+                        .font(.callout).foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Divider()
+
+                metricRow("checkmark.shield", "Content score", "\(score)/100", scoreTint(score))
+                if coordinator.sendMode == .send {
+                    metricRow("timer", "Est. send time",
+                              ThrottlePolicy.humanDuration(coordinator.throttle.expectedDuration(forCount: ready)))
+                }
+                metricRow("paperclip", "Attachments",
+                          coordinator.attachments.isEmpty ? "None" : "\(coordinator.attachments.count) file\(coordinator.attachments.count == 1 ? "" : "s")")
+                metricRow(coordinator.selectedClient.symbolName, "Sending via", coordinator.selectedClient.rawValue)
+
+                if let warning = coordinator.quotaWarning {
+                    Label(warning, systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout).foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Divider()
+
+                checkItem(ready > 0, "At least one recipient is ready")
+                checkItem(score >= 75, score >= 75 ? "Content looks inbox-friendly" : "Content check flags some issues")
+                checkItem(coordinator.missingAttachments.isEmpty, coordinator.missingAttachments.isEmpty ? "All attachments found" : "Some attachments are missing")
+            }
+        }
+    }
+
+    private func metricRow(_ icon: String, _ label: String, _ value: String,
+                           _ tint: Color = .primary) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon).foregroundStyle(.secondary).frame(width: 18)
+            Text(label).font(.callout).foregroundStyle(.secondary)
+            Spacer()
+            Text(value).font(.callout.weight(.medium)).foregroundStyle(tint)
+        }
+    }
+
+    private func checkItem(_ ok: Bool, _ text: String) -> some View {
+        Label(text, systemImage: ok ? "checkmark.circle.fill" : "circle")
+            .font(.callout)
+            .foregroundStyle(ok ? .green : .secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func scoreTint(_ score: Int) -> Color {
+        switch score {
+        case 90...: return .green
+        case 75..<90: return Brand.accent
+        case 50..<75: return .orange
+        default: return .red
+        }
+    }
+
     // MARK: - Hero (summary + client + mode + primary action)
 
     private var hero: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Send").font(.title2.bold())
+                Text("Send").font(.title.bold())
                 Text("Review your options, then create drafts or send.")
                     .font(.callout).foregroundStyle(.secondary)
-            }
-
-            HStack(spacing: 10) {
-                StatTile(value: "\(coordinator.sendablePreviews.count)", label: "Ready to send",
-                         systemImage: "checkmark.circle.fill", tint: .green)
-                StatTile(value: "\(coordinator.blockedPreviews.count)", label: "Excluded",
-                         systemImage: "exclamationmark.triangle.fill", tint: .orange)
             }
 
             VStack(alignment: .leading, spacing: 6) {
