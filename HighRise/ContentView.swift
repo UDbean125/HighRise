@@ -5,6 +5,7 @@ import SwiftUI
 /// stages.
 struct ContentView: View {
     @EnvironmentObject private var coordinator: HighRiseCoordinator
+    @AppStorage("hasSeenWelcomeTour") private var hasSeenWelcomeTour = false
 
     var body: some View {
         NavigationSplitView {
@@ -20,6 +21,13 @@ struct ContentView: View {
         }
         .navigationTitle("HighRise")
         .tint(Brand.accent)
+        .onAppear {
+            if !hasSeenWelcomeTour { coordinator.isShowingWelcome = true }
+        }
+        .sheet(isPresented: $coordinator.isShowingWelcome) {
+            WelcomeView(onStartWithTemplate: { coordinator.beginWithStarterTemplate() })
+                .onDisappear { hasSeenWelcomeTour = true }
+        }
     }
 
     @ViewBuilder
@@ -65,6 +73,16 @@ private struct StageSidebar: View {
                 Text("HighRise").font(.headline)
                 Text("Mail merge").font(.caption).foregroundStyle(.secondary)
             }
+            Spacer(minLength: 0)
+            Button {
+                coordinator.isShowingWelcome = true
+            } label: {
+                Image(systemName: "questionmark.circle")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Show the welcome tour")
         }
         .padding(16)
     }

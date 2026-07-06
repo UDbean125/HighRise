@@ -14,6 +14,12 @@ struct HighRiseApp: App {
         .commands {
             // Replace the default New-document item; HighRise is single-window.
             CommandGroup(replacing: .newItem) { }
+            // A working Help menu: replay the first-run welcome tour any time.
+            CommandGroup(replacing: .help) {
+                Button("HighRise Welcome Tour") {
+                    coordinator.isShowingWelcome = true
+                }
+            }
         }
     }
 }

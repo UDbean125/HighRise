@@ -14,6 +14,10 @@ struct TemplateEditorView: View {
 
     @State private var showSaveDialog = false
     @State private var newTemplateName = ""
+    @State private var showTemplateGallery = false
+    /// A starter the user picked while the composer already had content — held
+    /// until they confirm the overwrite.
+    @State private var pendingStarter: StarterTemplate?
 
     var body: some View {
         ScrollView {
@@ -22,6 +26,10 @@ struct TemplateEditorView: View {
                     header
                     Spacer()
                     templateLibraryMenu
+                }
+
+                if coordinator.isTemplateEmpty {
+                    starterHero
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -59,6 +67,87 @@ struct TemplateEditorView: View {
             .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
         }
+        .sheet(isPresented: $showTemplateGallery) { starterGallerySheet }
+        .onAppear(perform: consumeGalleryRequestIfNeeded)
+        .onChange(of: coordinator.pendingStarterGalleryRequest) { _, _ in
+            consumeGalleryRequestIfNeeded()
+        }
+        .confirmationDialog("Replace what you've written?",
+                            isPresented: Binding(get: { pendingStarter != nil },
+                                                 set: { if !$0 { pendingStarter = nil } }),
+                            titleVisibility: .visible) {
+            Button("Replace with “\(pendingStarter?.name ?? "")”", role: .destructive) {
+                if let starter = pendingStarter { load(starter) }
+                pendingStarter = nil
+            }
+            Button("Keep what I have", role: .cancel) { pendingStarter = nil }
+        } message: {
+            Text("This will overwrite the subject and body you've already written.")
+        }
+    }
+
+    // MARK: - Starter templates
+
+    /// A welcoming hero shown while the composer is empty: pick a ready-made
+    /// template to learn the merge syntax by example, or just start typing.
+    private var starterHero: some View {
+        SectionCard("Start with a ready-made template",
+                    systemImage: "wand.and.stars",
+                    subtitle: "New here? Pick one to see how merge fields work — then make it your own. Or just start typing below.") {
+            StarterTemplateGallery { starter in choose(starter) }
+        }
+    }
+
+    private var starterGallerySheet: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Start from a template").font(.title2.bold())
+                    Text("Every one is a working example of merge fields, fallbacks, and formatters you can tweak.")
+                        .font(.callout).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Button("Close") { showTemplateGallery = false }
+                    .keyboardShortcut(.cancelAction)
+            }
+            .padding(20)
+            Divider()
+            ScrollView {
+                StarterTemplateGallery { starter in
+                    showTemplateGallery = false
+                    // Defer so the sheet finishes dismissing before we load or
+                    // raise the overwrite confirmation on the window beneath.
+                    DispatchQueue.main.async { choose(starter) }
+                }
+                .padding(20)
+            }
+        }
+        .frame(width: 720, height: 560)
+    }
+
+    /// Opens the starter gallery if the welcome tour asked for it (deferred
+    /// until Compose is on screen), then clears the request.
+    private func consumeGalleryRequestIfNeeded() {
+        guard coordinator.pendingStarterGalleryRequest else { return }
+        coordinator.pendingStarterGalleryRequest = false
+        // Defer one tick so the welcome sheet (if any) finishes dismissing
+        // before we present the gallery on the same window.
+        DispatchQueue.main.async { showTemplateGallery = true }
+    }
+
+    /// Loads a starter, but asks first if it would clobber existing writing.
+    private func choose(_ starter: StarterTemplate) {
+        if coordinator.isTemplateEmpty {
+            load(starter)
+        } else {
+            pendingStarter = starter
+        }
+    }
+
+    private func load(_ starter: StarterTemplate) {
+        withAnimation { coordinator.loadStarterTemplate(starter) }
+        focus = .body
     }
 
     // MARK: - Live preview
@@ -101,6 +190,12 @@ struct TemplateEditorView: View {
 
     private var templateLibraryMenu: some View {
         Menu {
+            Button {
+                showTemplateGallery = true
+            } label: {
+                Label("Start from a template…", systemImage: "wand.and.stars")
+            }
+            Divider()
             Button {
                 newTemplateName = ""
                 showSaveDialog = true

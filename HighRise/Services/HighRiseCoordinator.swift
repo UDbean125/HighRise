@@ -20,6 +20,20 @@ final class HighRiseCoordinator: ObservableObject {
     @Published var stage: Stage = .compose
     @Published var template = EmailTemplate()
 
+    /// Drives the first-run (and replayable) welcome tour sheet.
+    @Published var isShowingWelcome = false
+    /// Set by the welcome tour to ask the Compose screen to open the starter
+    /// gallery once it appears.
+    @Published var pendingStarterGalleryRequest = false
+
+    /// Jumps to Compose and asks it to open the starter-template gallery —
+    /// the welcome tour's "start with a template" call to action.
+    func beginWithStarterTemplate() {
+        stage = .compose
+        pendingStarterGalleryRequest = true
+        isShowingWelcome = false
+    }
+
     @Published private(set) var contacts: [Contact] = []
     @Published private(set) var importedHeaders: [String] = []
     @Published var emailColumn: String? { didSet { remapContacts() } }
@@ -172,6 +186,18 @@ final class HighRiseCoordinator: ObservableObject {
     func deleteTemplate(_ saved: SavedTemplate) {
         library.delete(id: saved.id)
         savedTemplates = library.templates
+    }
+
+    /// Loads a built-in starter template into the composer.
+    func loadStarterTemplate(_ starter: StarterTemplate) {
+        template = starter.emailTemplate
+    }
+
+    /// Whether the composer is currently empty (used to offer the gallery/empty
+    /// state rather than a blank editor).
+    var isTemplateEmpty: Bool {
+        template.subject.trimmingCharacters(in: .whitespaces).isEmpty &&
+        template.body.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     // MARK: - Derived state
