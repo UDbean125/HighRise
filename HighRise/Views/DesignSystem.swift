@@ -111,6 +111,48 @@ struct StatTile: View {
     }
 }
 
+// MARK: - Collapsible card
+
+/// A card whose contents can be folded away — used to keep secondary options
+/// (attachments, CC/BCC, pacing, tools) tidy until the user wants them. An
+/// optional badge on the header hints at hidden content (e.g. "2 files").
+struct CollapsibleCard<Content: View>: View {
+    let title: String
+    var systemImage: String
+    var badge: String?
+    @State private var expanded: Bool
+    @ViewBuilder var content: () -> Content
+
+    init(_ title: String, systemImage: String, badge: String? = nil,
+         expanded: Bool = false, @ViewBuilder content: @escaping () -> Content) {
+        self.title = title
+        self.systemImage = systemImage
+        self.badge = badge
+        self._expanded = SwiftUI.State(initialValue: expanded)
+        self.content = content
+    }
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $expanded) {
+            content().padding(.top, 12)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage).foregroundStyle(Brand.accent).frame(width: 20)
+                Text(title).font(.headline)
+                if let badge {
+                    Text(badge)
+                        .font(.caption.weight(.medium))
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(Brand.accent.opacity(0.15), in: Capsule())
+                }
+                Spacer()
+            }
+            .contentShape(Rectangle())
+        }
+        .card()
+    }
+}
+
 // MARK: - Step badge
 
 /// The numbered/checkmarked circle used in the sidebar progress rail.
