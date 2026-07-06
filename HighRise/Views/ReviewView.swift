@@ -5,18 +5,50 @@ import SwiftUI
 struct ReviewView: View {
     @EnvironmentObject private var coordinator: HighRiseCoordinator
     @State private var selection: MergePreview.ID?
+    @State private var searchText = ""
+    @State private var statusFilter: StatusFilter = .all
+
+    enum StatusFilter: String, CaseIterable, Identifiable {
+        case all = "All", ready = "Ready", held = "Held"
+        var id: String { rawValue }
+    }
 
     private var previews: [MergePreview] { coordinator.previews }
+
+    /// The list after the search box and status chips are applied.
+    private var filteredPreviews: [MergePreview] {
+        previews.filter { preview in
+            let statusOK: Bool
+            switch statusFilter {
+            case .all:   statusOK = true
+            case .ready: statusOK = preview.isSendable
+            case .held:  statusOK = !preview.isSendable
+            }
+            guard statusOK else { return false }
+            guard !searchText.isEmpty else { return true }
+            return preview.contact.displayName.localizedCaseInsensitiveContains(searchText)
+                || preview.contact.email.localizedCaseInsensitiveContains(searchText)
+        }
+    }
 
     var body: some View {
         HSplitView {
             recipientList
-                .frame(minWidth: 240, idealWidth: 280, maxWidth: 360)
+                .frame(minWidth: 250, idealWidth: 300, maxWidth: 380)
             detailPane
                 .frame(minWidth: 360, maxWidth: .infinity)
         }
         .onAppear {
             if selection == nil { selection = previews.first?.id }
+        }
+        .onChange(of: searchText) { _, _ in reconcileSelection() }
+        .onChange(of: statusFilter) { _, _ in reconcileSelection() }
+    }
+
+    /// Keeps a sensible selection when the filter hides the current one.
+    private func reconcileSelection() {
+        if !filteredPreviews.contains(where: { $0.id == selection }) {
+            selection = filteredPreviews.first?.id
         }
     }
 
@@ -25,18 +57,50 @@ struct ReviewView: View {
             countsBanner
                 .padding(12)
             Divider()
-            List(previews, selection: $selection) { preview in
-                HStack {
-                    Image(systemName: preview.isSendable ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                        .foregroundStyle(preview.isSendable ? .green : .orange)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(preview.contact.displayName).lineLimit(1)
-                        Text(preview.contact.email).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            VStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("Find a recipient", text: $searchText)
+                        .textFieldStyle(.plain)
+                    if !searchText.isEmpty {
+                        Button {
+                            searchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .tag(preview.id)
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 7))
+                Picker("Show", selection: $statusFilter) {
+                    ForEach(StatusFilter.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
             }
-            .listStyle(.inset)
+            .padding(10)
+            if filteredPreviews.isEmpty {
+                Spacer()
+                Text(previews.isEmpty ? "No recipients yet." : "No matches — clear the search or filter.")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding()
+                Spacer()
+            } else {
+                List(filteredPreviews, selection: $selection) { preview in
+                    HStack {
+                        Image(systemName: preview.isSendable ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                            .foregroundStyle(preview.isSendable ? .green : .orange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(preview.contact.displayName).lineLimit(1)
+                            Text(preview.contact.email).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                    .tag(preview.id)
+                }
+                .listStyle(.inset)
+            }
         }
     }
 
