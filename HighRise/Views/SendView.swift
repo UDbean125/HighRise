@@ -666,7 +666,13 @@ struct SendView: View {
     private var resultsCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Label("Results", systemImage: "list.bullet.clipboard").font(.headline)
+                VStack(alignment: .leading, spacing: 1) {
+                    Label("Results", systemImage: "list.bullet.clipboard").font(.headline)
+                    if !coordinator.outcomes.isEmpty {
+                        Text(RunSummary.line(from: coordinator.outcomes))
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                }
                 Spacer()
                 if coordinator.failedCount > 0 && !coordinator.isSending {
                     Button {

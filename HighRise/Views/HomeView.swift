@@ -53,8 +53,7 @@ struct HomeView: View {
     }
 
     private var lastRunCard: some View {
-        let ok = coordinator.outcomes.filter(\.isSuccess).count
-        return Button {
+        Button {
             coordinator.stage = .send
         } label: {
             HStack(spacing: 10) {
@@ -62,7 +61,7 @@ struct HomeView: View {
                     .font(.title3).foregroundStyle(Brand.accent).frame(width: 26)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Last run").font(.subheadline.weight(.medium))
-                    Text("\(ok) of \(coordinator.outcomes.count) delivered — view results")
+                    Text("\(RunSummary.line(from: coordinator.outcomes)) — view results")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
