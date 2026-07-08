@@ -650,8 +650,14 @@ struct SendView: View {
     private var actionRow: some View {
         HStack(spacing: 12) {
             if coordinator.isSending {
-                ProgressView(value: coordinator.sendProgress)
-                    .frame(maxWidth: 240)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(SendProgress.caption(fraction: coordinator.sendProgress,
+                                              total: coordinator.sendablePreviews.count,
+                                              mode: coordinator.sendMode))
+                        .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                    ProgressView(value: coordinator.sendProgress)
+                        .frame(maxWidth: 240)
+                }
                 Button("Stop", role: .destructive) { coordinator.cancelSending() }
             } else {
                 Button {
