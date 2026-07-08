@@ -12,6 +12,10 @@ struct TemplateEditorView: View {
     private enum Field: Hashable { case subject, body }
     @FocusState private var focus: Field?
 
+    /// Bridges the formatting toolbar to the Rich body's AppKit text view so a
+    /// button wraps the current selection.
+    @StateObject private var richController = RichTextController()
+
     @State private var showSaveDialog = false
     @State private var newTemplateName = ""
     @State private var showTemplateGallery = false
@@ -98,12 +102,20 @@ struct TemplateEditorView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Body").font(.headline)
                 formattingToolbar
-                TextEditor(text: $coordinator.template.body)
-                    .font(.body)
-                    .frame(minHeight: 260)
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
-                    .focused($focus, equals: .body)
-                    .accessibilityLabel("Email body")
+                if coordinator.template.format == .rich {
+                    // AppKit-backed so the toolbar can wrap the live selection.
+                    SelectableTextEditor(text: $coordinator.template.body, controller: richController)
+                        .frame(minHeight: 260)
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+                        .accessibilityLabel("Email body")
+                } else {
+                    TextEditor(text: $coordinator.template.body)
+                        .font(.body)
+                        .frame(minHeight: 260)
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+                        .focused($focus, equals: .body)
+                        .accessibilityLabel("Email body")
+                }
                 if coordinator.template.body.isEmpty {
                     Text("Use {{FieldName}} anywhere to drop in a contact's details, e.g.\n\nHi {{First Name}},\n\nI've been following {{Company}} and wanted to reach out about {{Product Name}}…")
                         .font(.callout)
@@ -440,14 +452,12 @@ struct TemplateEditorView: View {
             HStack(spacing: 6) {
                 ForEach(MarkdownFormatting.Style.allCases) { style in
                     Button {
-                        coordinator.template.body =
-                            MarkdownFormatting.inserting(style, into: coordinator.template.body)
-                        focus = .body
+                        richController.apply(style)
                     } label: {
                         Image(systemName: style.systemImage)
                     }
                     .buttonStyle(.bordered)
-                    .help("Insert \(style.label.lowercased())")
+                    .help("Apply \(style.label.lowercased()) to the selection")
                     .accessibilityLabel(style.label)
                 }
                 Spacer()
