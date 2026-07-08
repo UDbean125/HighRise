@@ -75,6 +75,44 @@ struct TemplateMergeEngineTests {
         #expect(preview.resolvedBody == "Hello A & B")
     }
 
+    @Test("isHTMLDelivery covers HTML and Rich, not plain text")
+    func htmlDeliveryFlag() {
+        #expect(EmailTemplate.BodyFormat.plainText.isHTMLDelivery == false)
+        #expect(EmailTemplate.BodyFormat.html.isHTMLDelivery == true)
+        #expect(EmailTemplate.BodyFormat.rich.isHTMLDelivery == true)
+    }
+
+    @Test("Rich body converts Markdown to HTML, then escapes substituted values")
+    func richMarkdownConversion() {
+        let template = EmailTemplate(subject: "Hi {{Name}}",
+                                     body: "Hi **{{Name}}**\n\nThanks from {{Company}}.",
+                                     format: .rich)
+        let preview = TemplateMergeEngine.merge(template: template,
+                                                with: contact(["Name": "A<b>", "Company": "S&S"]))
+        // Markdown became HTML; values escaped exactly once (no double-escaping).
+        #expect(preview.resolvedBody
+                == "<p>Hi <strong>A&lt;b&gt;</strong></p><p>Thanks from S&amp;S.</p>")
+        // Subject stays plain text.
+        #expect(preview.resolvedSubject == "Hi A<b>")
+    }
+
+    @Test("Rich body still detects unresolved fields and never leaks a placeholder")
+    func richUnresolved() {
+        let template = EmailTemplate(subject: "Hi",
+                                     body: "Hello **{{Name}}**, re {{Project}}",
+                                     format: .rich)
+        let preview = TemplateMergeEngine.merge(template: template, with: contact(["Name": "Ada"]))
+        #expect(preview.unresolvedFields == ["Project"])
+        #expect(preview.resolvedBody == "<p>Hello <strong>Ada</strong>, re </p>")
+    }
+
+    @Test("A Rich fallback's Markdown is inserted literally, not re-rendered")
+    func richFallbackLiteral() {
+        let template = EmailTemplate(subject: "x", body: "Hi {{Name|**there**}}", format: .rich)
+        let preview = TemplateMergeEngine.merge(template: template, with: contact([:]))
+        #expect(preview.resolvedBody == "<p>Hi **there**</p>")
+    }
+
     @Test("referencedFields lists distinct placeholders in order")
     func referencedFields() {
         let template = EmailTemplate(subject: "{{Name}} {{Company}}", body: "{{Name}} {{Project}}")

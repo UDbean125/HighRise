@@ -16,8 +16,16 @@ struct EmailTemplate: Equatable, Codable {
     /// are combined rather than silently shipping broken markup.
     enum BodyFormat: String, CaseIterable, Identifiable, Equatable, Codable {
         case plainText = "Plain text"
+        case rich = "Rich text"
         case html = "HTML"
         var id: String { rawValue }
+
+        /// True for formats delivered as an HTML body — raw `html` and the
+        /// Markdown-authored `rich` format (which is converted to HTML on send).
+        /// Drives HTML-escaping of merged values and the `isHTML` send flag, so
+        /// every delivery-sensitive site can ask this one question instead of
+        /// enumerating cases and risking a missed spot.
+        var isHTMLDelivery: Bool { self == .html || self == .rich }
     }
 
     var subject: String
