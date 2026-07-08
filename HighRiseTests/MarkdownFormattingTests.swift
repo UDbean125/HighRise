@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 @testable import HighRise
 
 /// The toolbar splices Markdown into whatever's already typed, so the separator
