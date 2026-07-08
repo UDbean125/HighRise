@@ -73,10 +73,14 @@ struct SendView: View {
         let findings = ContentLinter.lint(template: coordinator.template)
         let score = ContentLinter.score(for: findings)
         let noun = coordinator.sendMode == .send ? "ready to send" : "drafts to create"
+        let report = SendReadiness.assess(readyCount: ready, contentScore: score,
+                                          missingAttachments: coordinator.missingAttachments.count,
+                                          mode: coordinator.sendMode)
 
         return SectionCard("Ready to send?", systemImage: "airplane.departure",
                            subtitle: "A quick pre-flight — nothing leaves your Mac until you confirm.") {
             VStack(alignment: .leading, spacing: 14) {
+                verdictBanner(report)
                 HStack(spacing: 12) {
                     Image(systemName: "paperplane.fill")
                         .font(.system(size: 30))
@@ -114,9 +118,9 @@ struct SendView: View {
 
                 Divider()
 
-                checkItem(ready > 0, "At least one recipient is ready")
-                checkItem(score >= 75, score >= 75 ? "Content looks inbox-friendly" : "Content check flags some issues")
-                checkItem(coordinator.missingAttachments.isEmpty, coordinator.missingAttachments.isEmpty ? "All attachments found" : "Some attachments are missing")
+                ForEach(report.checks) { check in
+                    checkItem(check.passed, check.title)
+                }
 
                 Divider()
                 Button {
@@ -132,6 +136,24 @@ struct SendView: View {
                 }
             }
         }
+    }
+
+    /// The single go/no-go line at the top of the rail — green when the run is
+    /// clear to proceed, amber when something needs attention first.
+    private func verdictBanner(_ report: SendReadiness.Report) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: report.canSend ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                .font(.title3)
+            Text(report.headline)
+                .font(.callout.weight(.medium))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(report.canSend ? .green : .orange)
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background((report.canSend ? Color.green : Color.orange).opacity(0.12),
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     @State private var reportStatus: String?
