@@ -97,6 +97,7 @@ struct TemplateEditorView: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Body").font(.headline)
+                formattingToolbar
                 TextEditor(text: $coordinator.template.body)
                     .font(.body)
                     .frame(minHeight: 260)
@@ -419,6 +420,31 @@ struct TemplateEditorView: View {
         guard let last = existing.last else { return token }
         let needsSpace = !last.isWhitespace && last != "\n"
         return existing + (needsSpace ? " " : "") + token
+    }
+
+    // MARK: - Rich formatting toolbar
+
+    /// Bold / italic / link / bullet buttons, shown only for the Rich (Markdown)
+    /// body. Each inserts its Markdown snippet into the body via a pure helper.
+    @ViewBuilder
+    private var formattingToolbar: some View {
+        if coordinator.template.format == .rich {
+            HStack(spacing: 6) {
+                ForEach(MarkdownFormatting.Style.allCases) { style in
+                    Button {
+                        coordinator.template.body =
+                            MarkdownFormatting.inserting(style, into: coordinator.template.body)
+                        focus = .body
+                    } label: {
+                        Image(systemName: style.systemImage)
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Insert \(style.label.lowercased())")
+                    .accessibilityLabel(style.label)
+                }
+                Spacer()
+            }
+        }
     }
 
     // MARK: - Conditional variants
