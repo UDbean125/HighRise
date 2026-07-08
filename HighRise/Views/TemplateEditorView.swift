@@ -482,19 +482,42 @@ struct TemplateEditorView: View {
 
     @ViewBuilder
     private var fieldsSummary: some View {
-        let fields = coordinator.template.referencedFields
-        if !fields.isEmpty {
+        let referenced = coordinator.template.referencedFields
+        if !referenced.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Merge fields in this template").font(.headline)
-                FieldChipsRow(fields: fields.map { MergeField(name: $0, detail: "") }, onInsert: nil)
-                if !coordinator.unmatchedTemplateFields.isEmpty && !coordinator.importedHeaders.isEmpty {
-                    Label("Your imported list has no column for: \(coordinator.unmatchedTemplateFields.joined(separator: ", "))",
-                          systemImage: "exclamationmark.triangle.fill")
-                        .font(.callout)
-                        .foregroundStyle(.orange)
+                if coordinator.importedHeaders.isEmpty {
+                    // No list imported yet — nothing to check the fields against.
+                    FieldChipsRow(fields: referenced.map { MergeField(name: $0, detail: "") }, onInsert: nil)
+                    Text("Import your contact list to see which fields are backed by a column.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    let report = FieldCoverage.assess(template: coordinator.template,
+                                                      headers: coordinator.importedHeaders)
+                    coverageSummaryLabel(report)
+                    CoverageChipsRow(report: report)
+                    if !report.missing.isEmpty {
+                        Label("No column for \(report.missing.map(\.name).joined(separator: ", ")) — add a matching column or a fallback like {{Field|there}}, or those rows are held back.",
+                              systemImage: "exclamationmark.triangle.fill")
+                            .font(.callout).foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
             .padding(.top, 4)
+        }
+    }
+
+    /// A one-line coverage verdict: green when every field is backed, neutral
+    /// otherwise with the backed/needed counts.
+    @ViewBuilder
+    private func coverageSummaryLabel(_ report: FieldCoverage.Report) -> some View {
+        if report.allBacked {
+            Label(FieldCoverage.line(report), systemImage: "checkmark.seal.fill")
+                .font(.callout).foregroundStyle(.green)
+        } else {
+            Label(FieldCoverage.line(report), systemImage: "list.bullet.clipboard")
+                .font(.callout).foregroundStyle(.secondary)
         }
     }
 }
@@ -529,6 +552,55 @@ struct FieldChipsRow: View {
             .padding(.vertical, 4)
             .background(Color.accentColor.opacity(0.15), in: Capsule())
             .contentShape(Capsule())
+    }
+}
+
+/// Merge-field chips colored by how the imported list covers each field: green
+/// when a column backs it, orange when a required field has no column (rows are
+/// held back), and gray when it's only ever used with a fallback (safe). A quick
+/// read of "will my merge actually resolve?" without leaving Compose.
+struct CoverageChipsRow: View {
+    let report: FieldCoverage.Report
+
+    var body: some View {
+        let columns = [GridItem(.adaptive(minimum: 90, maximum: 240), spacing: 8, alignment: .leading)]
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+            ForEach(report.fields) { field in
+                HStack(spacing: 4) {
+                    Image(systemName: icon(field.status)).font(.caption2)
+                    Text(field.name).font(.callout.monospaced()).lineLimit(1)
+                }
+                .foregroundStyle(color(field.status))
+                .padding(.horizontal, 10).padding(.vertical, 4)
+                .background(color(field.status).opacity(0.15), in: Capsule())
+                .contentShape(Capsule())
+                .help(helpText(field.status))
+            }
+        }
+    }
+
+    private func color(_ status: FieldCoverage.Status) -> Color {
+        switch status {
+        case .matched:  return .green
+        case .missing:  return .orange
+        case .fallback: return .gray
+        }
+    }
+
+    private func icon(_ status: FieldCoverage.Status) -> String {
+        switch status {
+        case .matched:  return "checkmark.circle.fill"
+        case .missing:  return "exclamationmark.triangle.fill"
+        case .fallback: return "arrow.uturn.down.circle"
+        }
+    }
+
+    private func helpText(_ status: FieldCoverage.Status) -> String {
+        switch status {
+        case .matched:  return "Backed by a column in your imported list."
+        case .missing:  return "No matching column — add one or a fallback, or these rows are held back."
+        case .fallback: return "No column, but every use has a fallback, so it won't hold rows back."
+        }
     }
 }
 
