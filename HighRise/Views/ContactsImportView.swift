@@ -362,7 +362,12 @@ struct ContactsImportView: View {
                     .font(.callout)
             }
             Table(coordinator.contacts.prefix(50).map { $0 }) {
-                TableColumn("Name", value: \.displayName)
+                TableColumn("Name") { contact in
+                    HStack(spacing: 8) {
+                        Avatar(name: contact.displayName, size: 22)
+                        Text(contact.displayName).lineLimit(1)
+                    }
+                }
                 TableColumn("Email", value: \.email)
                 TableColumn("Valid") { contact in
                     Image(systemName: EmailValidator.isValid(contact.email) ? "checkmark.circle" : "exclamationmark.triangle")

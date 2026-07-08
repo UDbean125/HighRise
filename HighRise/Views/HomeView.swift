@@ -117,6 +117,12 @@ struct HomeView: View {
 
     // MARK: - Greeting
 
+    /// Time-aware header text — the pure wording is in `Greeting`; this just
+    /// reads the current hour from the system clock.
+    private var hourGreeting: String {
+        Greeting.forHour(Calendar.current.component(.hour, from: Date()))
+    }
+
     private var greeting: some View {
         HStack(spacing: 16) {
             Image(nsImage: NSApp.applicationIconImage)
@@ -125,11 +131,12 @@ struct HomeView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Welcome to HighRise")
+                Text(hourGreeting)
                     .font(.largeTitle.bold())
                     .foregroundStyle(Brand.gradient)
-                Text("Personalize one email for your whole list — sent right from your Mac.")
+                Text("Welcome to HighRise — personalize one email for your whole list, sent right from your Mac.")
                     .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
         }
