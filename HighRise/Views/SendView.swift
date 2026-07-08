@@ -90,6 +90,15 @@ struct SendView: View {
                         Text(noun).font(.caption).foregroundStyle(.secondary)
                     }
                 }
+                if ready > 0 {
+                    Label {
+                        Text(RecipientPreview.summary(coordinator.sendablePreviews.map(\.contact.displayName)))
+                            .font(.callout).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } icon: {
+                        Image(systemName: "person.crop.circle").foregroundStyle(Brand.accent)
+                    }
+                }
                 if excluded > 0 {
                     Label("\(excluded) excluded — missing data, duplicate, or opted out.",
                           systemImage: "exclamationmark.triangle")
