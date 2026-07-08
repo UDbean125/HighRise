@@ -270,6 +270,16 @@ final class HighRiseCoordinator: ObservableObject {
     /// Whether `composePreview` is using the built-in sample (no list imported).
     var composePreviewIsSample: Bool { contacts.isEmpty }
 
+    /// The preview contact's body with `{{fields}}` substituted but *not*
+    /// converted to HTML — i.e. the merged Markdown source for a Rich body — so
+    /// the Compose preview can render it natively. Uses the same contact as
+    /// `composePreview`.
+    var composeMergedBodySource: String {
+        let contact = contacts.first ?? Contact.sample
+        let effective = template.effective(for: contact)
+        return TemplateMergeEngine.resolvePlaceholders(in: effective.body, with: contact)
+    }
+
     /// How many rows are held back purely because they repeat an earlier
     /// address — surfaced as a distinct warning since it's a list-hygiene issue,
     /// not a per-row data problem.
