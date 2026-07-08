@@ -251,7 +251,7 @@ struct TemplateEditorView: View {
     private var livePreview: some View {
         let preview = coordinator.composePreview
         let isSample = coordinator.composePreviewIsSample
-        let body = coordinator.template.format == .html
+        let body = coordinator.template.format.isHTMLDelivery
             ? HTMLTextExtractor.plainText(fromHTML: preview.resolvedBody)
             : preview.resolvedBody
         return SectionCard("Live preview", systemImage: "eye",
@@ -356,10 +356,17 @@ struct TemplateEditorView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .frame(maxWidth: 240)
-            if coordinator.template.format == .html {
+            switch coordinator.template.format {
+            case .rich:
+                Text("Write with Markdown — **bold**, *italic*, [links](https://…), and “- ” bullet lists. It's converted to HTML on send; field values are escaped automatically. Full fidelity in Outlook; Apple Mail renders HTML as plain text.")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            case .html:
                 Text("Paste HTML markup as the body. Field values are HTML-escaped automatically. Full fidelity in Outlook; Apple Mail renders it as plain text.")
                     .font(.callout).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            case .plainText:
+                EmptyView()
             }
         }
     }

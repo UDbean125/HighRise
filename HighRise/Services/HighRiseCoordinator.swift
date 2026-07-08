@@ -110,7 +110,7 @@ final class HighRiseCoordinator: ObservableObject {
         guard unsubscribeEnabled else { return body }
         let replyTo = unsubscribeReplyTo.trimmingCharacters(in: .whitespacesAndNewlines)
         guard EmailValidator.isValid(replyTo) else { return body }
-        let footer = template.format == .html
+        let footer = template.format.isHTMLDelivery
             ? UnsubscribeFooter.html(replyTo: replyTo, recipientEmail: contact.email, note: unsubscribeNote)
             : UnsubscribeFooter.plainText(replyTo: replyTo, recipientEmail: contact.email, note: unsubscribeNote)
         return body + footer
@@ -619,7 +619,7 @@ final class HighRiseCoordinator: ObservableObject {
                                         fallback: preview.contact.email)
             do {
                 try PDFComposer.write(content: preview.resolvedBody,
-                                      isHTML: template.format == .html,
+                                      isHTML: template.format.isHTMLDelivery,
                                       to: folder.appendingPathComponent(name),
                                       password: password.isEmpty ? nil : password)
                 written += 1
@@ -669,7 +669,7 @@ final class HighRiseCoordinator: ObservableObject {
                     recipientName: preview.contact.displayName,
                     subject: preview.resolvedSubject,
                     body: bodyWithFooter(preview.resolvedBody, for: preview.contact),
-                    isHTML: template.format == .html,
+                    isHTML: template.format.isHTMLDelivery,
                     cc: cc,
                     bcc: bcc,
                     attachmentPaths: allAttachments,
@@ -742,7 +742,7 @@ final class HighRiseCoordinator: ObservableObject {
             recipientName: "Test recipient",
             subject: "[TEST] " + sample.resolvedSubject,
             body: bodyWithFooter(sample.resolvedBody, for: sample.contact),
-            isHTML: template.format == .html,
+            isHTML: template.format.isHTMLDelivery,
             attachmentPaths: attachments.map(\.path),
             sender: effectiveSender,
             signatureName: effectiveSignature

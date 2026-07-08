@@ -249,7 +249,7 @@ struct SendView: View {
                     }
                 }
                 .pickerStyle(.segmented).labelsHidden()
-                if coordinator.selectedClient == .appleMail && coordinator.template.format == .html {
+                if coordinator.selectedClient == .appleMail && coordinator.template.format.isHTMLDelivery {
                     htmlNote
                 }
             }

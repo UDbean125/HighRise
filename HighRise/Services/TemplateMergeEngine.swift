@@ -53,7 +53,15 @@ enum TemplateMergeEngine {
         // Pick the variant (if any) whose rule matches this contact.
         let effective = template.effective(for: contact)
         let subject = substitute(effective.subject, false)
-        let body = substitute(effective.body, template.format == .html)
+        // A Rich (Markdown) body is converted to an HTML template first — with
+        // {{fields}} preserved by the converter — then merged with HTML-escaped
+        // values. So literal text is escaped once (by the converter) and each
+        // substituted value once (here), with no double-escaping. Subjects stay
+        // plain text and are never converted or escaped.
+        let bodyTemplate = template.format == .rich
+            ? MarkdownToHTML.html(from: effective.body)
+            : effective.body
+        let body = substitute(bodyTemplate, template.format.isHTMLDelivery)
 
         return MergePreview(
             id: contact.id,
