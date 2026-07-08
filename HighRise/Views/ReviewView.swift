@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// Stage 3: review the personalized messages before anything leaves the Mac.
-/// Recipients with missing data or bad addresses are surfaced and excluded.
+/// A glanceable summary strip tops the stage; recipients with missing data or
+/// bad addresses are surfaced with a status pill and excluded from sending.
 struct ReviewView: View {
     @EnvironmentObject private var coordinator: HighRiseCoordinator
     @State private var selection: MergePreview.ID?
@@ -14,6 +15,7 @@ struct ReviewView: View {
     }
 
     private var previews: [MergePreview] { coordinator.previews }
+    private var summary: ReviewSummary.Summary { ReviewSummary.of(previews) }
 
     /// The list after the search box and status chips are applied.
     private var filteredPreviews: [MergePreview] {
@@ -32,11 +34,18 @@ struct ReviewView: View {
     }
 
     var body: some View {
-        HSplitView {
-            recipientList
-                .frame(minWidth: 250, idealWidth: 300, maxWidth: 380)
-            detailPane
-                .frame(minWidth: 360, maxWidth: .infinity)
+        VStack(spacing: 0) {
+            summaryStrip
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                .padding(.bottom, 12)
+            Divider()
+            HSplitView {
+                recipientList
+                    .frame(minWidth: 250, idealWidth: 300, maxWidth: 380)
+                detailPane
+                    .frame(minWidth: 360, maxWidth: .infinity)
+            }
         }
         .onAppear {
             if selection == nil { selection = previews.first?.id }
@@ -52,11 +61,55 @@ struct ReviewView: View {
         }
     }
 
+    // MARK: - Summary strip
+
+    /// The glanceable header: recipients / ready / held / domains as stat tiles,
+    /// with a compact breakdown of *why* rows are held below.
+    private var summaryStrip: some View {
+        let s = summary
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                StatTile(value: "\(s.total)",
+                         label: s.total == 1 ? "recipient" : "recipients",
+                         systemImage: "person.2.fill")
+                StatTile(value: "\(s.ready)", label: "ready to send",
+                         systemImage: "checkmark.seal.fill", tint: .green)
+                if s.held > 0 {
+                    StatTile(value: "\(s.held)", label: "held back",
+                             systemImage: "exclamationmark.triangle.fill", tint: .orange)
+                }
+                StatTile(value: "\(s.domains)",
+                         label: s.domains == 1 ? "domain" : "domains",
+                         systemImage: "at")
+            }
+            heldBreakdown
+        }
+    }
+
+    /// Small pills explaining the held-back rows — duplicates and do-not-contact
+    /// entries — so users know it isn't just bad data.
+    @ViewBuilder
+    private var heldBreakdown: some View {
+        let dupes = coordinator.duplicateCount
+        let suppressed = coordinator.suppressedCount
+        if dupes > 0 || suppressed > 0 {
+            HStack(spacing: 6) {
+                if dupes > 0 {
+                    StatusPill(text: "\(dupes) duplicate\(dupes == 1 ? "" : "s") held",
+                               color: .orange, systemImage: "person.2.slash")
+                }
+                if suppressed > 0 {
+                    StatusPill(text: "\(suppressed) on do-not-contact",
+                               color: .orange, systemImage: "nosign")
+                }
+            }
+        }
+    }
+
+    // MARK: - Recipient list
+
     private var recipientList: some View {
         VStack(alignment: .leading, spacing: 0) {
-            countsBanner
-                .padding(12)
-            Divider()
             VStack(spacing: 8) {
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
@@ -89,56 +142,41 @@ struct ReviewView: View {
                 Spacer()
             } else {
                 List(filteredPreviews, selection: $selection) { preview in
-                    HStack {
-                        Image(systemName: preview.isSendable ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                            .foregroundStyle(preview.isSendable ? .green : .orange)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(preview.contact.displayName).lineLimit(1)
-                            Text(preview.contact.email).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                        }
-                    }
-                    .tag(preview.id)
+                    recipientRow(preview).tag(preview.id)
                 }
                 .listStyle(.inset)
             }
         }
     }
 
-    private var countsBanner: some View {
-        let sendable = coordinator.sendablePreviews.count
-        let blocked = coordinator.blockedPreviews.count
-        let duplicates = coordinator.duplicateCount
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: "checkmark.seal.fill").font(.title2).foregroundStyle(.green)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("\(sendable)").font(.title2.weight(.bold).monospacedDigit())
-                    Text("ready to send").font(.caption).foregroundStyle(.secondary)
-                }
+    /// A scannable row: initials avatar, name + address, and a status pill so
+    /// "who's ready vs held" reads at a glance without opening each one.
+    private func recipientRow(_ preview: MergePreview) -> some View {
+        HStack(spacing: 10) {
+            Avatar(name: preview.contact.displayName, size: 30)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(preview.contact.displayName).lineLimit(1)
+                Text(preview.contact.email).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
-            if blocked > 0 {
-                VStack(alignment: .leading, spacing: 2) {
-                    heldBackLine("\(blocked) excluded", "exclamationmark.triangle.fill")
-                    if duplicates > 0 {
-                        heldBackLine("\(duplicates) duplicate\(duplicates == 1 ? "" : "s") held back", "person.2.slash")
-                    }
-                    if coordinator.suppressedCount > 0 {
-                        heldBackLine("\(coordinator.suppressedCount) on do-not-contact list", "nosign")
-                    }
-                }
+            Spacer(minLength: 4)
+            if preview.isSendable {
+                StatusPill(text: "Ready", color: .green, systemImage: "checkmark")
+            } else {
+                StatusPill(text: "Held", color: .orange, systemImage: "exclamationmark.triangle.fill")
             }
         }
+        .padding(.vertical, 2)
     }
 
-    private func heldBackLine(_ text: String, _ icon: String) -> some View {
-        Label(text, systemImage: icon).font(.caption).foregroundStyle(.orange)
-    }
+    // MARK: - Detail pane
 
     @ViewBuilder
     private var detailPane: some View {
         if let id = selection, let preview = previews.first(where: { $0.id == id }) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    recipientHeader(preview)
+
                     if let reason = preview.blockingReason {
                         VStack(alignment: .leading, spacing: 8) {
                             Label(reason, systemImage: "exclamationmark.triangle.fill")
@@ -160,8 +198,6 @@ struct ReviewView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 14) {
-                        field("To", value: "\(preview.contact.displayName) <\(preview.contact.email)>")
-                        Divider()
                         field("Subject", value: preview.resolvedSubject)
                         Divider()
                         VStack(alignment: .leading, spacing: 6) {
@@ -178,6 +214,25 @@ struct ReviewView: View {
         } else {
             ContentUnavailableView("Select a recipient", systemImage: "envelope",
                                    description: Text("Choose someone on the left to preview their personalized message."))
+        }
+    }
+
+    /// The recipient identity header above the message card — avatar, name,
+    /// address, and a status pill mirroring the list.
+    private func recipientHeader(_ preview: MergePreview) -> some View {
+        HStack(spacing: 12) {
+            Avatar(name: preview.contact.displayName, size: 44)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(preview.contact.displayName).font(.title3.weight(.semibold)).lineLimit(1)
+                Text(preview.contact.email).font(.subheadline).foregroundStyle(.secondary)
+                    .textSelection(.enabled).lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            if preview.isSendable {
+                StatusPill(text: "Ready to send", color: .green, systemImage: "checkmark.seal.fill")
+            } else {
+                StatusPill(text: "Held back", color: .orange, systemImage: "exclamationmark.triangle.fill")
+            }
         }
     }
 
