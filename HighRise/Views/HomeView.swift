@@ -12,6 +12,7 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 22) {
                 greeting
                 sendingFromCard
+                nextStepCard
                 Text("Jump in").font(.title3.bold())
                 quickStartGrid
                 recentActivity
@@ -131,6 +132,71 @@ struct HomeView: View {
                     .font(.callout).foregroundStyle(.secondary)
             }
             Spacer()
+        }
+    }
+
+    // MARK: - Next step (primary wayfinding)
+
+    /// The one recommended action given where you are in the flow — a single,
+    /// prominent call-to-action so you never have to work out what to do next.
+    private var nextStepCard: some View {
+        let step = NextStep.suggest(hasTemplate: coordinator.canProceedToContacts,
+                                    contactCount: coordinator.contacts.count,
+                                    readyCount: coordinator.sendablePreviews.count,
+                                    hasSent: !coordinator.outcomes.isEmpty)
+        return Button {
+            navigate(to: step.action)
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: icon(for: step.action))
+                    .font(.title)
+                    .foregroundStyle(.white)
+                    .frame(width: 52, height: 52)
+                    .background(Brand.gradient,
+                                in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Next step")
+                        .font(.caption.weight(.semibold)).textCase(.uppercase)
+                        .foregroundStyle(Brand.accent)
+                    Text(step.title).font(.title3.bold())
+                    Text(step.detail).font(.callout).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                if step.action != .done {
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.title).foregroundStyle(Brand.accent)
+                }
+            }
+            .card(padding: 18)
+            .overlay(
+                RoundedRectangle(cornerRadius: Brand.cornerRadius, style: .continuous)
+                    .strokeBorder(Brand.accent.opacity(0.35), lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(step.action == .done)
+        .help(step.title)
+    }
+
+    private func navigate(to action: NextStep.Action) {
+        switch action {
+        case .compose:  coordinator.stage = .compose
+        case .contacts: coordinator.stage = .contacts
+        case .review:   coordinator.stage = .review
+        case .send:     coordinator.stage = .send
+        case .done:     break
+        }
+    }
+
+    private func icon(for action: NextStep.Action) -> String {
+        switch action {
+        case .compose:  return "square.and.pencil"
+        case .contacts: return "person.2.fill"
+        case .review:   return "checklist"
+        case .send:     return "paperplane.fill"
+        case .done:     return "checkmark.seal.fill"
         }
     }
 
