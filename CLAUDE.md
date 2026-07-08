@@ -70,6 +70,13 @@ so it can't break CI before the artwork exists.
 
 ## Conventions
 - Branch for this work: `claude/tool-feature-benchmarking-m241ea`.
+- **App-icon CI policy (owner decision):** keep the Liquid Glass `HighRise.icon`
+  wired in even though CI's Xcode 26.3 `actool` *intermittently crashes* on it
+  (`CompileAssetCatalogVariant` failure). On such a failure, **re-run the CI
+  job** — it usually passes — and do NOT revert to the static
+  `AppIcon.appiconset` or treat it as a code bug. The owner chose the nicer icon
+  over the documented always-green static fallback. Only a failure that is *not*
+  the icon crash indicates a real problem.
 - AppleScript string escaping (`AppleScriptBuilder.stringLiteral`) is the app's
   security boundary — keep it unit-tested.
 - Never leak a raw `{{placeholder}}` to a recipient; merge blocks unresolved rows.

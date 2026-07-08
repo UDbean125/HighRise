@@ -86,23 +86,40 @@ struct ReviewView: View {
         }
     }
 
-    /// Small pills explaining the held-back rows — duplicates and do-not-contact
-    /// entries — so users know it isn't just bad data.
+    /// Pills breaking the held-back rows down by *reason* — invalid address,
+    /// missing data, duplicate, do-not-contact, missing file — so users know
+    /// exactly what to fix, not just that something was held.
     @ViewBuilder
     private var heldBreakdown: some View {
-        let dupes = coordinator.duplicateCount
-        let suppressed = coordinator.suppressedCount
-        if dupes > 0 || suppressed > 0 {
-            HStack(spacing: 6) {
-                if dupes > 0 {
-                    StatusPill(text: "\(dupes) duplicate\(dupes == 1 ? "" : "s") held",
-                               color: .orange, systemImage: "person.2.slash")
-                }
-                if suppressed > 0 {
-                    StatusPill(text: "\(suppressed) on do-not-contact",
-                               color: .orange, systemImage: "nosign")
+        let entries = HeldReasons.tally(previews)
+        if !entries.isEmpty {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 130, maximum: 260), spacing: 6, alignment: .leading)],
+                      alignment: .leading, spacing: 6) {
+                ForEach(entries) { entry in
+                    StatusPill(text: "\(entry.count) \(heldShortLabel(entry.category))",
+                               color: .orange, systemImage: heldIcon(entry.category))
                 }
             }
+        }
+    }
+
+    private func heldShortLabel(_ category: PreSendReport.Block) -> String {
+        switch category {
+        case .invalidEmail:      return "invalid email"
+        case .suppressed:        return "do-not-contact"
+        case .missingData:       return "missing data"
+        case .missingAttachment: return "missing file"
+        case .duplicate:         return "duplicate"
+        }
+    }
+
+    private func heldIcon(_ category: PreSendReport.Block) -> String {
+        switch category {
+        case .invalidEmail:      return "envelope.badge"
+        case .suppressed:        return "nosign"
+        case .missingData:       return "exclamationmark.triangle.fill"
+        case .missingAttachment: return "paperclip"
+        case .duplicate:         return "person.2.slash"
         }
     }
 
