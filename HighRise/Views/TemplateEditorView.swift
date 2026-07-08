@@ -272,9 +272,17 @@ struct TemplateEditorView: View {
                     .font(.headline).textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Text("Body").font(.caption).foregroundStyle(.secondary)
-                Text(body.isEmpty ? "—" : body)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                if coordinator.template.format == .rich {
+                    // Render the Markdown natively so bold/italic/links/bullets
+                    // show as formatted text, not raw markup.
+                    Text(RichPreview.attributed(from: coordinator.composeMergedBodySource))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text(body.isEmpty ? "—" : body)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 if !preview.unresolvedFields.isEmpty {
                     Label("Missing for this recipient: \(preview.unresolvedFields.joined(separator: ", "))",
                           systemImage: "exclamationmark.triangle")
