@@ -45,7 +45,7 @@ struct HeldReasonsTests {
     @Test("A row is counted once, by its highest-priority reason")
     func singleReasonPerRow() {
         // Both a bad address and missing data — invalidEmail wins (it's checked first).
-        let entries = HeldReasons.tally([preview(email: "bad", validEmail: false, unresolved: ["First Name"])])
+        let entries = HeldReasons.tally([preview(email: "bad", unresolved: ["First Name"], validEmail: false)])
         #expect(entries.map(\.category) == [.invalidEmail])
         #expect(HeldReasons.total(entries) == 1)
     }
