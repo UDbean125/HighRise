@@ -92,6 +92,15 @@ and only stop to ask when something is genuinely destructive, irreversible,
 outside this repo, or a real design fork. Do not re-ask for permission to run
 this ordinary dev work — it is granted.
 
+**Pre-approved commands/tools (always allowed, owner-confirmed):**
+- `git` — all subcommands, incl. `commit`, `commit --allow-empty`, `push -u`,
+  `fetch`, `checkout -B`, `pull`, `log`, `status`, `diff`, `add`.
+- `xcodegen generate`, `swift`, `swiftc`, `xcodebuild`.
+- File tools: Read, Edit, Write, Glob, Grep.
+- MCP: the GitHub server (`mcp__github__*` — PRs, CI, logs, re-runs) and the
+  scheduling server (`mcp__Claude_Code_Remote__*` — triggers/check-ins).
+This mirrors `.claude/settings.example.json`; run any of these without asking.
+
 **How that approval is actually enforced (so it never has to be re-litigated):**
 the Claude Code harness gates commands via settings files, and *only the owner*
 can widen them — an agent cannot self-authorize broader access (writing its own
