@@ -38,7 +38,18 @@ struct SendView: View {
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text(coordinator.sendMode.explanation)
+            Text(coordinator.sendMode.explanation + "\n\n"
+                 + SendConfirmation.detail(account: confirmAccount,
+                                           attachments: coordinator.attachments.count))
+        }
+    }
+
+    /// The account label shown in the confirmation dialog — the Apple Mail
+    /// sender identity (blank → default), or Outlook's own default account.
+    private var confirmAccount: String {
+        switch coordinator.selectedClient {
+        case .appleMail: return coordinator.senderIdentity
+        case .outlook:   return "Outlook's default account"
         }
     }
 
