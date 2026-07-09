@@ -264,10 +264,10 @@ struct ImportCleanerTests {
     @Test("Only name- and company-like columns are casing candidates")
     func casingColumns() {
         for header in ["Name", "Full Name", "first_name", "Company", "Organisation", "Account Name"] {
-            #expect(ImportCleaner.isCasingColumn(header), Comment(rawValue: header))
+            #expect(ImportCleaner.isCasingColumn(header), "\(header)")
         }
         for header in ["Email", "Notes", "Address", "Job Title", "Website"] {
-            #expect(!ImportCleaner.isCasingColumn(header), Comment(rawValue: header))
+            #expect(!ImportCleaner.isCasingColumn(header), "\(header)")
         }
     }
 
