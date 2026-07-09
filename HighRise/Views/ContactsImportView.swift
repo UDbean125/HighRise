@@ -65,9 +65,88 @@ struct ContactsImportView: View {
 
             if !coordinator.contacts.isEmpty {
                 columnsCard
+                cleanupCard
                 previewCard
             }
         }
+    }
+
+    /// Full disclosure of what the automatic import cleanup fixed, plus
+    /// one-click suggested repairs that are never applied on their own —
+    /// the answer to "why doesn't my list look exactly like my file?".
+    @ViewBuilder
+    private var cleanupCard: some View {
+        let report = coordinator.cleanupReport
+        let suggestions = coordinator.cleanupSuggestions
+        if !coordinator.cleanupEnabled || !report.isEmpty || !suggestions.isEmpty {
+            SectionCard("Import cleanup", systemImage: "wand.and.stars",
+                        subtitle: "Fixes apply to this import only — your original file is never touched.") {
+                VStack(alignment: .leading, spacing: 12) {
+                    if !coordinator.cleanupEnabled {
+                        Label("Cleanup is off — this is the data exactly as imported.",
+                              systemImage: "eye")
+                            .font(.callout).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Re-apply Cleanup") { coordinator.cleanupEnabled = true }
+                    } else {
+                        ForEach(report.changes) { change in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Label(change.summary, systemImage: icon(for: change.kind))
+                                    .font(.callout)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                if let example = change.examples.first {
+                                    exampleText(example).padding(.leading, 26)
+                                }
+                            }
+                        }
+                        if !suggestions.isEmpty {
+                            if !report.isEmpty { Divider() }
+                            Text("Suggested fixes")
+                                .font(.subheadline.weight(.semibold))
+                            ForEach(suggestions) { suggestion in
+                                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(suggestion.title)
+                                            .font(.callout)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                        if let example = suggestion.examples.first {
+                                            exampleText(example)
+                                        }
+                                    }
+                                    Spacer()
+                                    Button("Apply") {
+                                        coordinator.applyCleanupSuggestion(suggestion)
+                                    }
+                                }
+                            }
+                        }
+                        Divider()
+                        Button {
+                            coordinator.cleanupEnabled = false
+                        } label: {
+                            Label("Show Original Data", systemImage: "arrow.uturn.backward")
+                        }
+                        .buttonStyle(.link)
+                        .help("Turn off all cleanup and use the import exactly as it was")
+                    }
+                }
+            }
+        }
+    }
+
+    private func icon(for kind: ImportCleaner.Change.Kind) -> String {
+        switch kind {
+        case .whitespace:        return "scissors"
+        case .junkValue:         return "eraser"
+        case .emailRepair:       return "envelope.badge"
+        case .repeatedHeaderRow: return "tablecells"
+        }
+    }
+
+    private func exampleText(_ example: ImportCleaner.Example) -> some View {
+        Text("e.g. “\(example.before)” → \(example.after.isEmpty ? "(blank)" : "“\(example.after)”")")
+            .font(.caption).foregroundStyle(.secondary)
+            .lineLimit(2)
     }
 
     /// Live data-quality readout: usable addresses, duplicates, and how
@@ -174,7 +253,7 @@ struct ContactsImportView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Add your contacts").font(.title2).bold()
-            Text("Import from a file (CSV, Excel, Word, or PDF) or pull directly from your address book. CSV and Excel need a header row naming each column; Word and PDF are scanned for addresses as a best effort.")
+            Text("Import from a file (CSV, Excel, Word, or PDF) or pull directly from your address book. CSV and Excel need a header row naming each column; Word and PDF are scanned for addresses as a best effort. Messy exports are tidied automatically — every fix is disclosed below, and the original data is one click away.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

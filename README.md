@@ -23,6 +23,15 @@ Built to the Bryan's Notes stack rules: Swift + SwiftUI, Apple SDK only,
    - **Outlook** contacts (via automation)
    - (Apple **Numbers** files can't be read directly — export to CSV first; the
      app tells you so.)
+
+   Messy exports are **auto-tidied on import**: stray/invisible whitespace,
+   spreadsheet junk (`#N/A`, `NULL`, `-`), repeated header rows, and mangled
+   addresses (`mailto:`, `Name <addr@x.com>`, stray punctuation) are repaired
+   mechanically — every fix disclosed on the import screen and undoable in one
+   click ("Show Original Data"). Riskier repairs — misspelled mail domains
+   (`gmial.com`), ALL-CAPS names/companies, `Last, First` name order — are
+   *suggested* with counts and examples, applied only when you click. Try it:
+   `Examples/messy-recipients.csv`.
 3. **Review** every personalized message. Recipients with missing data or an
    invalid address are flagged and excluded automatically.
 4. **Send** — *draft-first by default*: each message is created in your client's
@@ -167,6 +176,7 @@ Services/
   OutlookContactsImporter.swift  Outlook contacts via AppleScript
   ZipEntryReader.swift     Extracts one entry from a zip via /usr/bin/unzip
   EmailValidator.swift     Pragmatic address validation
+  ImportCleaner.swift      Auto-fixes + suggested repairs for messy imports
   TemplateMergeEngine.swift  Pure {{Field}} substitution + HTML escaping
   AppleScriptBuilder.swift   Builds escaped AppleScript per client/mode
   MailSender.swift         Runs AppleScript (NSAppleScript), per-message delivery

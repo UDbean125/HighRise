@@ -37,7 +37,23 @@ let mode: SendMode = .draft
 let rule = String(repeating: "─", count: 60)
 
 do {
-    let table = try CSVParser.parse(csvText)
+    let parsed = try CSVParser.parse(csvText)
+    // The same auto-cleanup the app applies at ingest (whitespace, junk
+    // tokens, mangled emails, repeated header rows), disclosed fix by fix.
+    let (table, cleanup) = ImportCleaner.autoClean(parsed)
+    if !cleanup.isEmpty {
+        print("Import cleanup: \(cleanup.totalFixes) value(s) auto-cleaned")
+        for change in cleanup.changes {
+            print("  • \(change.summary)")
+            if let example = change.examples.first {
+                print("    e.g. “\(example.before)” → “\(example.after)”")
+            }
+        }
+        print("")
+    }
+    for suggestion in ImportCleaner.suggestions(for: table) {
+        print("💡 Suggested fix (one click in the app, never automatic): \(suggestion.title)")
+    }
     let (contacts, emailHeader) = CSVParser.contacts(from: table)
     print("Parsed \(contacts.count) contact(s) from \(csvPath)")
     print("Email column: \(emailHeader ?? "—")  ·  client: \(client.rawValue)  ·  mode: \(mode.rawValue)\n")
