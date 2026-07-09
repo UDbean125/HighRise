@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # Pre-staged for the Icon Composer .icon (which needs Xcode 26+ to compile).
       # Guarded: selects the newest Xcode >= 26 if the runner has one, otherwise
@@ -49,7 +49,7 @@ jobs:
             -scheme HighRise \
             -destination 'platform=macOS' \
             CODE_SIGNING_ALLOWED=NO \
-            | tail -80
+            | tee xcodebuild.log | tail -80
 
   # The Windows companion (Windows/HighRise-Merge.ps1) targets Windows
   # PowerShell 5.1, which only exists on Windows — so its dry run is exercised
@@ -60,7 +60,7 @@ jobs:
 
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Dry run under Windows PowerShell 5.1
         shell: powershell
