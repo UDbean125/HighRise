@@ -75,7 +75,7 @@ enum MergeFieldCatalog {
     /// The recommended column headers, used to seed the CSV template (email first
     /// so the importer's auto-detection lands on it immediately).
     static var templateHeaders: [String] {
-        var headers = ["First Name", "Last Name", "Company", "Email"]
+        let headers = ["First Name", "Last Name", "Company", "Email"]
         let rest = allFields.map(\.name).filter { !headers.contains($0) }
         return headers + rest
     }
