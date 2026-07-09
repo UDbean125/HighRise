@@ -92,10 +92,15 @@ and only stop to ask when something is genuinely destructive, irreversible,
 outside this repo, or a real design fork. Do not re-ask for permission to run
 this ordinary dev work — it is granted.
 
-**Pre-approved commands/tools (always allowed, owner-confirmed):**
+**Pre-approved commands/tools (ALWAYS ALLOW — owner-confirmed):**
+These run with **no permission prompt**: `permissions.defaultMode` is `"auto"`
+and every entry below is in `permissions.allow` (see `.claude/settings.json` and
+`.claude/settings.example.json`, which carry the identical list):
 - `git` — all subcommands, incl. `commit`, `commit --allow-empty`, `push -u`,
   `fetch`, `checkout -B`, `pull`, `log`, `status`, `diff`, `add`.
-- `xcodegen generate`, `swift`, `swiftc`, `xcodebuild`.
+- `xcodegen`, `swift`, `swiftc`, `xcodebuild`.
+- `npm`, `npx`, `pnpm`, `python3`.
+- `ffmpeg`, `ffprobe`, `apt-get install`, `brew`.
 - File tools: Read, Edit, Write, Glob, Grep.
 - MCP: the GitHub server (`mcp__github__*` — PRs, CI, logs, re-runs) and the
   scheduling server (`mcp__Claude_Code_Remote__*` — triggers/check-ins).
