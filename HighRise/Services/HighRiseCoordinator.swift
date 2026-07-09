@@ -77,6 +77,34 @@ final class HighRiseCoordinator: ObservableObject {
     @Published private(set) var importSummary: String?
     @Published var importError: String?
 
+    /// What the automatic import cleanup fixed (stray whitespace, spreadsheet
+    /// junk tokens, mangled emails, repeated header rows) — disclosed in full
+    /// on the Contacts screen so nothing is ever changed silently.
+    @Published private(set) var cleanupReport: ImportCleaner.Report = .empty
+
+    /// Riskier repairs (misspelled mail domains, SHOUTING case, "Last, First"
+    /// name order) offered as one-click fixes, never applied automatically.
+    @Published private(set) var cleanupSuggestions: [ImportCleaner.Suggestion] = []
+
+    /// Whether auto-cleanup is applied to the current import. Turning it off
+    /// shows the data exactly as imported (and clears any applied suggestions);
+    /// turning it back on re-cleans. Nothing touches the user's original file.
+    @Published var cleanupEnabled = true {
+        didSet {
+            guard oldValue != cleanupEnabled else { return }
+            if !cleanupEnabled { appliedSuggestions = [] }
+            remapContacts()
+        }
+    }
+
+    /// Suggestions the user accepted, re-applied in order whenever the table
+    /// is re-derived (email column change, cleanup toggled back on).
+    private var appliedSuggestions: [ImportCleaner.Suggestion] = []
+
+    /// The import exactly as parsed, before any cleanup — kept so cleanup is
+    /// always reversible.
+    private var rawTable: RecipientTable?
+
     /// Optional column whose value is a per-recipient attachment file path
     /// (`;`-separated for several, `~` expanded). Nil = no per-recipient files.
     @Published var attachmentColumn: String?
@@ -336,26 +364,36 @@ final class HighRiseCoordinator: ObservableObject {
     /// a `RecipientTable` (headers + rows) and ingested here, so email-column
     /// detection, preview, and merge behave identically regardless of source.
     func ingest(_ table: RecipientTable, sourceLabel: String) {
-        parsedTable = table
-        importedHeaders = table.headers
+        rawTable = table
+        appliedSuggestions = []
+        cleanupEnabled = true
         importError = nil
-        attachmentColumn = Self.detectAttachmentColumn(in: table.headers)
+
+        // Column detection runs on the cleaned data — that's what the user
+        // will see, and repairs (mailto:, NBSP headers…) improve detection.
+        let (cleaned, _) = ImportCleaner.autoClean(table)
+        importedHeaders = cleaned.headers
+        attachmentColumn = Self.detectAttachmentColumn(in: cleaned.headers)
 
         // Choosing the email column repopulates `contacts` via `didSet`;
         // when detection lands on the column already selected, remap by hand.
-        let detected = CSVParser.detectEmailColumn(in: table)
+        let detected = CSVParser.detectEmailColumn(in: cleaned)
         if emailColumn != detected {
             emailColumn = detected
         } else {
             remapContacts()
         }
 
-        let skipped = max(0, table.rows.count - contacts.count)
+        let rowCount = parsedTable?.rows.count ?? table.rows.count
+        let skipped = max(0, rowCount - contacts.count)
         var summary = "Imported \(contacts.count) contact\(contacts.count == 1 ? "" : "s") from \(sourceLabel)"
         if let detected { summary += " · email column: “\(detected)”" }
         if skipped > 0 { summary += " · \(skipped) row\(skipped == 1 ? "" : "s") skipped (no email)" }
+        if cleanupReport.totalFixes > 0 {
+            summary += " · \(cleanupReport.totalFixes) value\(cleanupReport.totalFixes == 1 ? "" : "s") auto-cleaned"
+        }
         importSummary = summary
-        Log.csv.info("Ingested \(self.contacts.count, privacy: .public) contacts from \(sourceLabel, privacy: .public); skipped \(skipped, privacy: .public)")
+        Log.csv.info("Ingested \(self.contacts.count, privacy: .public) contacts from \(sourceLabel, privacy: .public); skipped \(skipped, privacy: .public); auto-cleaned \(self.cleanupReport.totalFixes, privacy: .public) values")
     }
 
     /// Records a failed import and clears any partial state.
@@ -365,6 +403,10 @@ final class HighRiseCoordinator: ObservableObject {
         contacts = []
         importedHeaders = []
         parsedTable = nil
+        rawTable = nil
+        cleanupReport = .empty
+        cleanupSuggestions = []
+        appliedSuggestions = []
         clearWorkbookSelection()
         Log.csv.error("Import failed: \(message, privacy: .public)")
     }
@@ -483,9 +525,34 @@ final class HighRiseCoordinator: ObservableObject {
     }
 
     private func remapContacts() {
-        guard let table = parsedTable else { return }
-        let (parsedContacts, _) = CSVParser.contacts(from: table, emailHeader: emailColumn)
+        guard let raw = rawTable else { return }
+        if cleanupEnabled {
+            let (cleaned, report) = ImportCleaner.autoClean(raw, emailColumn: emailColumn)
+            var working = cleaned
+            for suggestion in appliedSuggestions {
+                working = ImportCleaner.apply(suggestion, to: working).table
+            }
+            parsedTable = working
+            cleanupReport = report
+            cleanupSuggestions = ImportCleaner.suggestions(for: working, emailColumn: emailColumn)
+        } else {
+            parsedTable = raw
+            cleanupReport = .empty
+            cleanupSuggestions = []
+        }
+        importedHeaders = parsedTable?.headers ?? []
+        let (parsedContacts, _) = CSVParser.contacts(from: parsedTable ?? raw, emailHeader: emailColumn)
         contacts = parsedContacts
+    }
+
+    /// Applies one suggested repair (domain typo, casing, name order) to the
+    /// imported data and re-derives contacts, previews, and the remaining
+    /// suggestions. Reversible via `cleanupEnabled = false`.
+    func applyCleanupSuggestion(_ suggestion: ImportCleaner.Suggestion) {
+        guard cleanupEnabled else { return }
+        appliedSuggestions.append(suggestion)
+        remapContacts()
+        Log.csv.info("Applied \(suggestion.kind.rawValue, privacy: .public) cleanup to \(suggestion.count, privacy: .public) value(s)")
     }
 
     // MARK: - Name-inference repair
@@ -781,6 +848,10 @@ final class HighRiseCoordinator: ObservableObject {
         importSummary = nil
         importError = nil
         parsedTable = nil
+        rawTable = nil
+        cleanupReport = .empty
+        cleanupSuggestions = []
+        appliedSuggestions = []
         emailColumn = nil
         attachmentColumn = nil
         clearWorkbookSelection()
