@@ -388,8 +388,12 @@ final class HighRiseCoordinator: ObservableObject {
     /// Fields whose every use carries a `{{Field|fallback}}` are exempt: they
     /// can't block a send, so a missing column isn't a problem.
     var unmatchedTemplateFields: [String] {
-        let available = Set(importedHeaders.map { $0.lowercased() })
-        return template.fieldsRequiringData.filter { !available.contains($0.lowercased()) }
+        // Recognizes synonyms too ("Company" is backed by an "Account Name"
+        // column) — see `FieldSynonyms` — so this agrees with `FieldCoverage`
+        // and with what the merge itself actually resolves.
+        template.fieldsRequiringData.filter { field in
+            !importedHeaders.contains { FieldSynonyms.match($0, field) }
+        }
     }
 
     /// Adds a `|fallback` to every occurrence of `fieldName` that doesn't

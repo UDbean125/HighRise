@@ -44,4 +44,12 @@ struct HighRiseCoordinatorImportTests {
         coordinator.emailColumn = "Backup"
         #expect(coordinator.contacts.first?.email == "backup@example.com")
     }
+
+    @Test("unmatchedTemplateFields recognizes a synonym column, e.g. Company/Account")
+    func unmatchedTemplateFieldsRecognizesSynonyms() async {
+        let coordinator = HighRiseCoordinator()
+        await coordinator.importCSV("Account Name,Email\nAcme,a@example.com")
+        coordinator.template = EmailTemplate(subject: "Hi {{Company}}", body: "…")
+        #expect(coordinator.unmatchedTemplateFields.isEmpty)
+    }
 }

@@ -666,7 +666,7 @@ struct CoverageChipsRow: View {
 
     private func helpText(_ status: FieldCoverage.Status) -> String {
         switch status {
-        case .matched:  return "Backed by a column in your imported list."
+        case .matched:  return "Backed by a column in your imported list — including recognized synonyms, e.g. an \u{201C}Account\u{201D} or \u{201C}Account Name\u{201D} column backs \u{201C}Company\u{201D}."
         case .missing:  return "No matching column — add one or a fallback, or these rows are held back."
         case .fallback: return "No column, but every use has a fallback, so it won't hold rows back."
         }

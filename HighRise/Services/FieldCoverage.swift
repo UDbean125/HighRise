@@ -46,11 +46,14 @@ enum FieldCoverage {
     ///     `EmailTemplate.fieldsRequiringData`).
     ///   - headers: the imported list's column headers.
     static func assess(referenced: [String], requiring: [String], headers: [String]) -> Report {
-        let available = Set(headers.map(normalize))
         let required = Set(requiring.map(normalize))
         let fields = referenced.map { name -> Field in
+            // Recognizes synonyms too ("Company" is backed by an "Account
+            // Name" column) — see `FieldSynonyms`, so this agrees with what
+            // the merge itself will actually resolve via `Contact.value(for:)`.
+            let isAvailable = headers.contains { FieldSynonyms.match($0, name) }
+            if isAvailable { return Field(name: name, status: .matched) }
             let key = normalize(name)
-            if available.contains(key) { return Field(name: name, status: .matched) }
             return Field(name: name, status: required.contains(key) ? .missing : .fallback)
         }
         return Report(fields: fields)
