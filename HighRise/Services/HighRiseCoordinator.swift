@@ -77,6 +77,11 @@ final class HighRiseCoordinator: ObservableObject {
     @Published private(set) var importSummary: String?
     @Published var importError: String?
 
+    /// Rows dropped from the current import because their email column was
+    /// blank — shown in full on the Contacts screen so "N rows skipped" is
+    /// never a dead end.
+    @Published private(set) var skippedRows: [CSVParser.SkippedRow] = []
+
     /// What the automatic import cleanup fixed (stray whitespace, spreadsheet
     /// junk tokens, mangled emails, repeated header rows) — disclosed in full
     /// on the Contacts screen so nothing is ever changed silently.
@@ -407,6 +412,7 @@ final class HighRiseCoordinator: ObservableObject {
         cleanupReport = .empty
         cleanupSuggestions = []
         appliedSuggestions = []
+        skippedRows = []
         clearWorkbookSelection()
         Log.csv.error("Import failed: \(message, privacy: .public)")
     }
@@ -541,8 +547,10 @@ final class HighRiseCoordinator: ObservableObject {
             cleanupSuggestions = []
         }
         importedHeaders = parsedTable?.headers ?? []
-        let (parsedContacts, _) = CSVParser.contacts(from: parsedTable ?? raw, emailHeader: emailColumn)
+        let effectiveTable = parsedTable ?? raw
+        let (parsedContacts, _) = CSVParser.contacts(from: effectiveTable, emailHeader: emailColumn)
         contacts = parsedContacts
+        skippedRows = CSVParser.skippedRows(from: effectiveTable, emailHeader: emailColumn)
     }
 
     /// Applies one suggested repair (domain typo, casing, name order) to the

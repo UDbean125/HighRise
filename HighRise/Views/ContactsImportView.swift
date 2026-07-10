@@ -66,6 +66,7 @@ struct ContactsImportView: View {
             if !coordinator.contacts.isEmpty {
                 columnsCard
                 cleanupCard
+                skippedRowsCard
                 previewCard
             }
         }
@@ -129,6 +130,35 @@ struct ContactsImportView: View {
                         .buttonStyle(.link)
                         .help("Turn off all cleanup and use the import exactly as it was")
                     }
+                }
+            }
+        }
+    }
+
+    /// Names the rows silently dropped for having no email address, so
+    /// "N rows skipped" in the summary line is never a dead end — the user can
+    /// see exactly which rows and fix the source file if it's a mistake.
+    @ViewBuilder
+    private var skippedRowsCard: some View {
+        let skipped = coordinator.skippedRows
+        if !skipped.isEmpty {
+            SectionCard("Skipped rows", systemImage: "questionmark.folder",
+                        subtitle: "\(skipped.count) row\(skipped.count == 1 ? "" : "s") had no value in the email column and weren't imported.") {
+                DisclosureGroup("Show skipped rows") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(skipped) { row in
+                            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                Text("Row \(row.rowNumber)")
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 56, alignment: .leading)
+                                Text(row.preview)
+                                    .font(.callout)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+                    .padding(.top, 4)
                 }
             }
         }

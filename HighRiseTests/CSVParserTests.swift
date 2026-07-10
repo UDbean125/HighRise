@@ -115,6 +115,32 @@ struct CSVParserTests {
         #expect(contacts[0].value(for: "name") == "Ada")
     }
 
+    @Test("skippedRows names the row and a preview of its non-blank values")
+    func skippedRowsNamesTheDroppedRow() throws {
+        let table = try CSVParser.parse("Name,Company,Email\nAda,Acme,ada@example.com\nNoEmail,Widgets,")
+        let skipped = CSVParser.skippedRows(from: table)
+        #expect(skipped.count == 1)
+        #expect(skipped[0].rowNumber == 3)   // header is row 1, "NoEmail" is row 3
+        #expect(skipped[0].preview == "NoEmail, Widgets")
+    }
+
+    @Test("skippedRows reports a placeholder for an entirely blank row")
+    func skippedRowsBlankRow() {
+        // Built directly rather than via CSVParser.parse(_:), which already
+        // drops fully-blank rows before this function ever sees them — this
+        // pins the fallback for callers that hand in rows some other way.
+        let table = RecipientTable(headers: ["Name", "Email"], rows: [["", ""]])
+        let skipped = CSVParser.skippedRows(from: table)
+        #expect(skipped.count == 1)
+        #expect(skipped[0].preview == "(blank row)")
+    }
+
+    @Test("skippedRows is empty when no email column can be found")
+    func skippedRowsNoEmailColumn() throws {
+        let table = try CSVParser.parse("A,B\n1,2")
+        #expect(CSVParser.skippedRows(from: table, emailHeader: "Missing").isEmpty)
+    }
+
     @Test("Contact field lookup is case-insensitive")
     func caseInsensitiveLookup() throws {
         let table = try CSVParser.parse("Company,Email\nAcme,a@acme.com")

@@ -162,6 +162,44 @@ enum CSVParser {
         return (contacts, emailKey)
     }
 
+    /// A row dropped from `contacts(from:emailHeader:)` because its email
+    /// column was blank — named so the UI can show *which* rows were skipped,
+    /// not just a bare count.
+    struct SkippedRow: Identifiable, Equatable {
+        let id = UUID()
+        /// 1-based, counting the header as row 1 — matches how the row would
+        /// be numbered if opened in Excel/Numbers.
+        let rowNumber: Int
+        /// The first couple of non-blank values in the row, so the row is
+        /// recognizable without re-opening the source file.
+        let preview: String
+    }
+
+    /// Rows from `table` that `contacts(from:emailHeader:)` silently drops
+    /// because they have no value in the email column.
+    static func skippedRows(from table: RecipientTable, emailHeader: String? = nil) -> [SkippedRow] {
+        let chosen = emailHeader ?? detectEmailColumn(in: table)
+        guard let emailKey = chosen,
+              let emailIndex = table.headers.firstIndex(where: { $0.lowercased() == emailKey.lowercased() })
+        else {
+            return []
+        }
+
+        return table.rows.enumerated().compactMap { offset, row in
+            let email = (emailIndex < row.count ? row[emailIndex] : "")
+                .trimmingCharacters(in: .whitespaces)
+            guard email.isEmpty else { return nil }
+            let nonBlank = table.headers.enumerated().compactMap { index, header -> String? in
+                guard !header.isEmpty, index < row.count else { return nil }
+                let value = row[index].trimmingCharacters(in: .whitespaces)
+                return value.isEmpty ? nil : value
+            }
+            let preview = nonBlank.prefix(2).joined(separator: ", ")
+            return SkippedRow(rowNumber: offset + 2,
+                               preview: preview.isEmpty ? "(blank row)" : preview)
+        }
+    }
+
     /// Picks the most likely email column: first a header that mentions "email",
     /// otherwise the column whose values most often look like addresses.
     static func detectEmailColumn(in table: RecipientTable) -> String? {
