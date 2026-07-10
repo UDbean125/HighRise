@@ -1,9 +1,0 @@
-{
-  "google": {
-    "clientId": "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com",
-    "clientSecret": "YOUR_GOOGLE_CLIENT_SECRET"
-  },
-  "microsoft": {
-    "clientId": "YOUR_AZURE_APPLICATION_CLIENT_ID"
-  }
-}
