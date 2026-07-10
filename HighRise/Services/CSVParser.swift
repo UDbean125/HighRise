@@ -200,27 +200,43 @@ enum CSVParser {
         }
     }
 
-    /// Picks the most likely email column: first a header that mentions "email",
-    /// otherwise the column whose values most often look like addresses.
+    /// Picks the most likely email column: among headers that mention "email",
+    /// the one with the most valid-looking addresses (a CRM export commonly has
+    /// several — "Email", "Email (Primary Contact)", "Email - Accounts
+    /// Payable" — and the first one by name isn't necessarily the one that's
+    /// actually populated); otherwise the column whose values most often look
+    /// like addresses, regardless of header name.
     static func detectEmailColumn(in table: RecipientTable) -> String? {
-        if let named = table.headers.first(where: {
+        let named = table.headers.filter {
             let h = $0.lowercased()
             return h.contains("email") || h.contains("e-mail") || h == "mail"
-        }) {
-            return named
         }
-        var bestHeader: String?
-        var bestScore = 0
-        for (index, header) in table.headers.enumerated() where !header.isEmpty {
+        if !named.isEmpty {
+            if let best = bestScoringColumn(among: named, in: table), best.score > 0 {
+                return best.header
+            }
+            // None of the email-named columns have any valid address yet —
+            // still prefer one of them by name over an unrelated column.
+            return named.first
+        }
+        return bestScoringColumn(among: table.headers.filter { !$0.isEmpty }, in: table)?.header
+    }
+
+    /// Among `candidates`, the header whose column has the most values that
+    /// pass `EmailValidator`, or nil when `candidates` is empty.
+    private static func bestScoringColumn(among candidates: [String],
+                                          in table: RecipientTable) -> (header: String, score: Int)? {
+        var best: (header: String, score: Int)?
+        for header in candidates {
+            guard let index = table.headers.firstIndex(of: header) else { continue }
             let score = table.rows.reduce(0) { acc, row in
                 guard index < row.count else { return acc }
                 return acc + (EmailValidator.isValid(row[index]) ? 1 : 0)
             }
-            if score > bestScore {
-                bestScore = score
-                bestHeader = header
+            if best == nil || score > best!.score {
+                best = (header, score)
             }
         }
-        return bestHeader
+        return best
     }
 }

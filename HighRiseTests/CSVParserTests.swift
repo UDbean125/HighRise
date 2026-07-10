@@ -105,6 +105,27 @@ struct CSVParserTests {
         #expect(CSVParser.detectEmailColumn(in: table) == "B")
     }
 
+    @Test("Among several email-named columns, picks the one with the most valid addresses")
+    func detectPrefersBestPopulatedEmailColumn() throws {
+        // "Email (Primary Contact)" is first by name but almost empty; a real
+        // CRM export often looks exactly like this (several overlapping email
+        // columns) — the first one alphabetically/positionally isn't
+        // necessarily the one that's actually populated.
+        let table = try CSVParser.parse("""
+        Name,Email (Primary Contact),Email
+        Ada,,ada@example.com
+        Grace,,grace@example.com
+        Rose,rose@example.com,
+        """)
+        #expect(CSVParser.detectEmailColumn(in: table) == "Email")
+    }
+
+    @Test("With no valid data in any email-named column, still prefers one by name")
+    func detectFallsBackToFirstEmailNamedColumnWhenAllEmpty() throws {
+        let table = try CSVParser.parse("Name,Email (Primary Contact),Email\nAda,,\nGrace,,")
+        #expect(CSVParser.detectEmailColumn(in: table) == "Email (Primary Contact)")
+    }
+
     @Test("Maps rows to contacts and skips rows with no email")
     func contactsSkipNoEmail() throws {
         let table = try CSVParser.parse("Name,Email\nAda,ada@example.com\nNoEmail,")

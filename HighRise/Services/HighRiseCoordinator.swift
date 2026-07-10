@@ -73,9 +73,26 @@ final class HighRiseCoordinator: ObservableObject {
 
     @Published private(set) var contacts: [Contact] = []
     @Published private(set) var importedHeaders: [String] = []
-    @Published var emailColumn: String? { didSet { remapContacts() } }
+    @Published var emailColumn: String? {
+        didSet {
+            guard !isBulkUpdating else { return }
+            remapContacts()
+        }
+    }
     @Published private(set) var importSummary: String?
     @Published var importError: String?
+
+    /// True while a fresh import (file read + clean + contact-building) is
+    /// running in the background — a real CRM export can be 100,000+ rows,
+    /// so this can take several seconds. The screen shows a progress state
+    /// instead of looking frozen or having silently failed.
+    @Published private(set) var isImporting = false
+
+    /// Suppresses `emailColumn`'s `didSet` while `ingest` assigns the
+    /// already-computed result back — without this, that assignment would
+    /// kick off a second, redundant (and synchronous, on the main thread)
+    /// `remapContacts()` pass right after the background one just finished.
+    private var isBulkUpdating = false
 
     /// Rows dropped from the current import because their email column was
     /// blank — shown in full on the Contacts screen so "N rows skipped" is
@@ -397,37 +414,33 @@ final class HighRiseCoordinator: ObservableObject {
     /// origin — CSV, Excel, Word/PDF, Apple Contacts, Outlook — it is reduced to
     /// a `RecipientTable` (headers + rows) and ingested here, so email-column
     /// detection, preview, and merge behave identically regardless of source.
-    func ingest(_ table: RecipientTable, sourceLabel: String) {
+    ///
+    /// The heavy work (`ImportPipeline.run`) happens off the main thread —
+    /// see that type's doc comment for why. Callers are expected to already
+    /// have `isImporting` set; this only owns the compute-and-apply step.
+    func ingest(_ table: RecipientTable, sourceLabel: String) async {
         rawTable = table
         appliedSuggestions = []
         cleanupEnabled = true
         importError = nil
 
-        // Column detection runs on the cleaned data — that's what the user
-        // will see, and repairs (mailto:, NBSP headers…) improve detection.
-        let (cleaned, _) = ImportCleaner.autoClean(table)
-        importedHeaders = cleaned.headers
-        attachmentColumn = Self.detectAttachmentColumn(in: cleaned.headers)
+        let result = await Task.detached(priority: .userInitiated) {
+            ImportPipeline.run(table: table, sourceLabel: sourceLabel, cleanupEnabled: true,
+                              appliedSuggestions: [], emailColumnOverride: nil)
+        }.value
 
-        // Choosing the email column repopulates `contacts` via `didSet`;
-        // when detection lands on the column already selected, remap by hand.
-        let detected = CSVParser.detectEmailColumn(in: cleaned)
-        if emailColumn != detected {
-            emailColumn = detected
-        } else {
-            remapContacts()
-        }
-
-        let rowCount = parsedTable?.rows.count ?? table.rows.count
-        let skipped = max(0, rowCount - contacts.count)
-        var summary = "Imported \(contacts.count) contact\(contacts.count == 1 ? "" : "s") from \(sourceLabel)"
-        if let detected { summary += " · email column: “\(detected)”" }
-        if skipped > 0 { summary += " · \(skipped) row\(skipped == 1 ? "" : "s") skipped (no email)" }
-        if cleanupReport.totalFixes > 0 {
-            summary += " · \(cleanupReport.totalFixes) value\(cleanupReport.totalFixes == 1 ? "" : "s") auto-cleaned"
-        }
-        importSummary = summary
-        Log.csv.info("Ingested \(self.contacts.count, privacy: .public) contacts from \(sourceLabel, privacy: .public); skipped \(skipped, privacy: .public); auto-cleaned \(self.cleanupReport.totalFixes, privacy: .public) values")
+        importedHeaders = result.importedHeaders
+        attachmentColumn = result.attachmentColumn
+        isBulkUpdating = true
+        emailColumn = result.emailColumn
+        isBulkUpdating = false
+        cleanupReport = result.cleanupReport
+        cleanupSuggestions = result.cleanupSuggestions
+        parsedTable = result.parsedTable
+        contacts = result.contacts
+        skippedRows = result.skippedRows
+        importSummary = result.importSummary
+        Log.csv.info("Ingested \(result.contacts.count, privacy: .public) contacts from \(sourceLabel, privacy: .public); auto-cleaned \(result.cleanupReport.totalFixes, privacy: .public) values")
     }
 
     /// Records a failed import and clears any partial state.
@@ -447,92 +460,142 @@ final class HighRiseCoordinator: ObservableObject {
     }
 
     /// Parses CSV text into contacts. Auto-detects the email column unless one
-    /// was already chosen.
-    func importCSV(_ text: String) {
+    /// was already chosen. Parsing runs off the main thread — a pasted list
+    /// can be tens of thousands of lines.
+    func importCSV(_ text: String) async {
+        isImporting = true
+        defer { isImporting = false }
         do {
-            let table = try CSVParser.parse(text)
-            ingest(table, sourceLabel: "pasted text")
+            let table = try await Task.detached(priority: .userInitiated) {
+                try CSVParser.parse(text)
+            }.value
+            await ingest(table, sourceLabel: "pasted text")
         } catch {
             reportImportFailure(error.localizedDescription)
         }
     }
 
-    /// Routes a dropped/chosen file to the right reader based on its extension.
-    func importFile(at url: URL) {
+    private enum ImportFileError: Error {
+        case unrecognizedEncoding(String)
+        var message: String {
+            switch self {
+            case .unrecognizedEncoding(let name):
+                return "Couldn't read \(name) — its text encoding isn't recognized. Re-save it as UTF-8 CSV."
+            }
+        }
+    }
+
+    /// Routes a dropped/chosen file to the right reader based on its
+    /// extension. Reading and parsing run off the main thread — a real CRM
+    /// export can be 100,000+ rows and tens of megabytes, and doing that
+    /// synchronously on the main thread makes the app look hung (or worse,
+    /// like it silently failed) for the many seconds it takes.
+    func importFile(at url: URL) async {
         let ext = url.pathExtension.lowercased()
         // Any new file supersedes a previously loaded workbook's sheet picker.
         clearWorkbookSelection()
-        do {
-            switch ext {
-            case "csv", "tsv", "txt":
-                let data = try Data(contentsOf: url)
-                guard let text = CSVParser.decode(data) else {
-                    reportImportFailure("Couldn't read \(url.lastPathComponent) — its text encoding isn't recognized. Re-save it as UTF-8 CSV.")
-                    return
-                }
-                // TSV files are tab-delimited; other text auto-detects.
-                let table = try CSVParser.parse(text, delimiter: ext == "tsv" ? "\t" : nil)
-                ingest(table, sourceLabel: url.lastPathComponent)
-            case "numbers":
-                reportImportFailure("Apple Numbers files can't be read directly. In Numbers, choose File ▸ Export To ▸ CSV… (or Excel), then import that file.")
-            case "xlsx":
-                let sheets = (try? XLSXReader.worksheets(in: url)) ?? []
-                let table = try XLSXReader.read(url)
+        isImporting = true
+        defer { isImporting = false }
+
+        switch ext {
+        case "csv", "tsv", "txt":
+            do {
+                let table = try await Task.detached(priority: .userInitiated) {
+                    let data = try Data(contentsOf: url)
+                    guard let text = CSVParser.decode(data) else {
+                        throw ImportFileError.unrecognizedEncoding(url.lastPathComponent)
+                    }
+                    // TSV files are tab-delimited; other text auto-detects.
+                    return try CSVParser.parse(text, delimiter: ext == "tsv" ? "\t" : nil)
+                }.value
+                await ingest(table, sourceLabel: url.lastPathComponent)
+            } catch let error as ImportFileError {
+                reportImportFailure(error.message)
+            } catch {
+                reportImportFailure("Couldn't read \(url.lastPathComponent): \(error.localizedDescription)")
+            }
+        case "numbers":
+            reportImportFailure("Apple Numbers files can't be read directly. In Numbers, choose File ▸ Export To ▸ CSV… (or Excel), then import that file.")
+        case "xlsx":
+            do {
+                let (sheets, table) = try await Task.detached(priority: .userInitiated) {
+                    let sheets = (try? XLSXReader.worksheets(in: url)) ?? []
+                    let table = try XLSXReader.read(url)
+                    return (sheets, table)
+                }.value
                 // Only offer the picker when there's a real choice to make.
                 if sheets.count > 1 {
                     workbookURL = url
                     availableWorksheets = sheets
                     selectedWorksheet = sheets.first?.name
                 }
-                ingest(table, sourceLabel: sheetSourceLabel(url, sheet: selectedWorksheet))
-            case "docx", "pdf":
-                let text = try DocumentTextExtractor.extractText(from: url)
-                let table = LooseContactExtractor.table(from: text)
+                await ingest(table, sourceLabel: sheetSourceLabel(url, sheet: selectedWorksheet))
+            } catch {
+                reportImportFailure("Couldn't read \(url.lastPathComponent): \(error.localizedDescription)")
+            }
+        case "docx", "pdf":
+            do {
+                let table = try await Task.detached(priority: .userInitiated) {
+                    let text = try DocumentTextExtractor.extractText(from: url)
+                    return LooseContactExtractor.table(from: text)
+                }.value
                 guard !table.rows.isEmpty else {
                     reportImportFailure("No email addresses were found in \(url.lastPathComponent). Try a CSV or Excel export for reliable results.")
                     return
                 }
-                ingest(table, sourceLabel: url.lastPathComponent)
-            default:
-                reportImportFailure("Unsupported file type: .\(ext)")
+                await ingest(table, sourceLabel: url.lastPathComponent)
+            } catch {
+                reportImportFailure("Couldn't read \(url.lastPathComponent): \(error.localizedDescription)")
             }
-        } catch {
-            reportImportFailure("Couldn't read \(url.lastPathComponent): \(error.localizedDescription)")
+        default:
+            reportImportFailure("Unsupported file type: .\(ext)")
         }
     }
 
     /// Imports recipients from the user's Apple/iCloud address book.
     func importFromAppleContacts() async {
+        isImporting = true
+        defer { isImporting = false }
         do {
             let table = try await ContactsImporter.fetchTable()
-            ingest(table, sourceLabel: "Apple Contacts")
+            await ingest(table, sourceLabel: "Apple Contacts")
         } catch {
             reportImportFailure(error.localizedDescription)
         }
     }
 
     /// Imports recipients from Microsoft Outlook's contacts via automation.
-    func importFromOutlookContacts() {
+    /// `OutlookContactsImporter` is itself main-actor-isolated (it drives
+    /// AppleScript), so this runs on the main actor rather than detached —
+    /// Outlook address books are typically far smaller than a CRM export.
+    func importFromOutlookContacts() async {
+        isImporting = true
+        defer { isImporting = false }
         do {
             let table = try OutlookContactsImporter.fetchTable()
             guard !table.rows.isEmpty else {
                 reportImportFailure("No Outlook contacts with email addresses were found.")
                 return
             }
-            ingest(table, sourceLabel: "Outlook Contacts")
+            await ingest(table, sourceLabel: "Outlook Contacts")
         } catch {
             reportImportFailure(error.localizedDescription)
         }
     }
 
     /// Re-imports the loaded workbook using a different worksheet tab.
-    func selectWorksheet(_ name: String) {
+    func selectWorksheet(_ name: String) async {
         guard let url = workbookURL, name != selectedWorksheet else { return }
+        isImporting = true
+        defer { isImporting = false }
         do {
-            let table = try XLSXReader.read(url, sheetName: name)
+            let table = try await Task.detached(priority: .userInitiated) {
+                try XLSXReader.read(url, sheetName: name)
+            }.value
             selectedWorksheet = name
-            emailColumn = nil // headers may differ between sheets; re-detect
-            ingest(table, sourceLabel: sheetSourceLabel(url, sheet: name))
+            // Headers may differ between sheets — `ingest` always re-detects
+            // the email column fresh, so no need to clear it here first.
+            await ingest(table, sourceLabel: sheetSourceLabel(url, sheet: name))
         } catch {
             reportImportFailure("Couldn't read “\(name)”: \(error.localizedDescription)")
         }
@@ -548,15 +611,6 @@ final class HighRiseCoordinator: ObservableObject {
         workbookURL = nil
         availableWorksheets = []
         selectedWorksheet = nil
-    }
-
-    /// Guesses an attachment column from the headers (a column named
-    /// "attachment"/"attachments"/"file"/"files"), else nil.
-    static func detectAttachmentColumn(in headers: [String]) -> String? {
-        headers.first {
-            let h = $0.lowercased()
-            return h == "attachment" || h == "attachments" || h == "file" || h == "files"
-        }
     }
 
     private func remapContacts() {

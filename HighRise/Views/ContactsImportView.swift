@@ -43,9 +43,14 @@ struct ContactsImportView: View {
             switch result {
             case .success(let urls):
                 guard let url = urls.first else { return }
-                let didAccess = url.startAccessingSecurityScopedResource()
-                defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-                coordinator.importFile(at: url)
+                // The security scope must stay open for the whole async
+                // import, not just until this closure returns — so it's
+                // acquired and released inside the Task, spanning the await.
+                Task {
+                    let didAccess = url.startAccessingSecurityScopedResource()
+                    defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+                    await coordinator.importFile(at: url)
+                }
             case .failure(let error):
                 coordinator.importError = error.localizedDescription
             }
@@ -56,6 +61,9 @@ struct ContactsImportView: View {
         VStack(alignment: .leading, spacing: 20) {
             header
             importControls
+            if coordinator.isImporting {
+                importingIndicator
+            }
             templateRow
 
             if let error = coordinator.importError {
@@ -309,7 +317,7 @@ struct ContactsImportView: View {
                 Label("Apple Contacts", systemImage: "person.crop.circle")
             }
             Button {
-                coordinator.importFromOutlookContacts()
+                Task { await coordinator.importFromOutlookContacts() }
             } label: {
                 Label("Outlook Contacts", systemImage: "person.crop.circle.badge.questionmark")
             }
@@ -319,12 +327,24 @@ struct ContactsImportView: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .disabled(coordinator.isImporting)
         .overlay(alignment: .bottomLeading) {
             if showPaste {
                 pastePanel.offset(y: 4)
             }
         }
         .padding(.bottom, showPaste ? 220 : 0)
+    }
+
+    /// Shown while a fresh import runs in the background — large real-world
+    /// exports (tens of thousands of rows) can take several seconds, and
+    /// without this the screen just looks stuck.
+    private var importingIndicator: some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text("Importing… large files (tens of thousands of rows) can take a little while.")
+                .font(.callout).foregroundStyle(.secondary)
+        }
     }
 
     private var pastePanel: some View {
@@ -337,8 +357,9 @@ struct ContactsImportView: View {
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
             HStack {
                 Button("Import Pasted Text") {
-                    coordinator.importCSV(pastedText)
+                    let text = pastedText
                     showPaste = false
+                    Task { await coordinator.importCSV(text) }
                 }
                 .disabled(pastedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Button("Cancel") { showPaste = false }
@@ -392,7 +413,10 @@ struct ContactsImportView: View {
             Text("Worksheet").font(.subheadline).foregroundStyle(.secondary)
             Picker("Worksheet", selection: Binding(
                 get: { coordinator.selectedWorksheet ?? "" },
-                set: { if !$0.isEmpty { coordinator.selectWorksheet($0) } }
+                set: { name in
+                    guard !name.isEmpty else { return }
+                    Task { await coordinator.selectWorksheet(name) }
+                }
             )) {
                 ForEach(coordinator.availableWorksheets, id: \.name) { sheet in
                     Text(sheet.name).tag(sheet.name)
@@ -400,6 +424,7 @@ struct ContactsImportView: View {
             }
             .labelsHidden()
             .frame(maxWidth: 240)
+            .disabled(coordinator.isImporting)
             Text("This workbook has \(coordinator.availableWorksheets.count) sheets.")
                 .font(.callout).foregroundStyle(.secondary)
             Spacer()
