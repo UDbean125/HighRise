@@ -153,4 +153,46 @@ struct EmailTemplate: Equatable, Codable {
     /// Matches `{{ FieldName }}` — any run of characters that isn't a brace,
     /// surrounded by double braces, with optional internal whitespace.
     static let placeholderPattern = #"\{\{\s*([^{}]+?)\s*\}\}"#
+
+    /// Returns a copy where every occurrence of `fieldName` that has no
+    /// fallback yet gets one: `{{Field}}` → `{{Field|there}}`, and
+    /// `{{Field|upper}}` → `{{Field|there|upper}}` (any existing transforms
+    /// are kept, just after the new fallback). Occurrences that already carry
+    /// a fallback are left alone. Backs Compose's one-click "Add fallback" on
+    /// a missing-coverage chip — the same fix the merge-syntax guide only
+    /// used to describe in prose.
+    func addingFallback(_ fallback: String, forField fieldName: String) -> EmailTemplate {
+        var copy = self
+        copy.subject = Self.addingFallback(fallback, forField: fieldName, in: subject)
+        copy.body = Self.addingFallback(fallback, forField: fieldName, in: body)
+        copy.variants = variants.map { variant in
+            var v = variant
+            v.subject = Self.addingFallback(fallback, forField: fieldName, in: variant.subject)
+            v.body = Self.addingFallback(fallback, forField: fieldName, in: variant.body)
+            return v
+        }
+        return copy
+    }
+
+    private static func addingFallback(_ fallback: String, forField fieldName: String, in text: String) -> String {
+        guard let regex = try? NSRegularExpression(pattern: placeholderPattern) else { return text }
+        let nsText = text as NSString
+        let matches = regex.matches(in: text, range: NSRange(location: 0, length: nsText.length))
+        var result = text
+        // Rightmost first, so an earlier replacement never shifts a range
+        // this loop hasn't consumed yet.
+        for match in matches.reversed() {
+            guard match.numberOfRanges >= 2 else { continue }
+            let innerRange = match.range(at: 1)
+            let inner = nsText.substring(with: innerRange)
+            let parsed = token(fromRawPlaceholder: inner)
+            guard parsed.name.caseInsensitiveCompare(fieldName) == .orderedSame,
+                  parsed.fallback == nil else { continue }
+            var pieces = inner.components(separatedBy: "|")
+            pieces.insert(fallback, at: 1)
+            let newInner = pieces.joined(separator: "|")
+            result = (result as NSString).replacingCharacters(in: innerRange, with: newInner)
+        }
+        return result
+    }
 }

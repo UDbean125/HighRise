@@ -17,12 +17,30 @@ struct ThrottlePolicy: Equatable {
     var batchSize: Int
     /// Seconds to pause once a full batch completes.
     var batchPause: Double
+    /// When true, a run stops itself after several consecutive delivery
+    /// failures rather than working through an entire list while every
+    /// attempt is failing (the mail client crashed, lost its account, or
+    /// started rejecting the automation). This reacts to failures the send
+    /// loop can see directly — AppleScript exposes no way to read bounces or
+    /// spam complaints after a message leaves the Mac, so those downstream
+    /// signals aren't and can't be part of this.
+    var stopOnRepeatedFailures: Bool
 
-    init(baseDelay: Double = 0.4, jitter: Double = 0, batchSize: Int = 0, batchPause: Double = 0) {
+    /// Consecutive failures that trigger an early stop.
+    static let consecutiveFailureStopThreshold = 3
+
+    init(baseDelay: Double = 0.4, jitter: Double = 0, batchSize: Int = 0, batchPause: Double = 0,
+         stopOnRepeatedFailures: Bool = true) {
         self.baseDelay = max(0, baseDelay)
         self.jitter = max(0, jitter)
         self.batchSize = max(0, batchSize)
         self.batchPause = max(0, batchPause)
+        self.stopOnRepeatedFailures = stopOnRepeatedFailures
+    }
+
+    /// Whether a run should stop itself given a streak of `consecutiveFailures`.
+    func shouldStopEarly(consecutiveFailures: Int) -> Bool {
+        stopOnRepeatedFailures && consecutiveFailures >= Self.consecutiveFailureStopThreshold
     }
 
     /// No pacing at all — send as fast as the client accepts scripts.

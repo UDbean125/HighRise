@@ -77,6 +77,22 @@ struct ThrottlePolicyTests {
         #expect(ThrottlePolicy.humanDuration(3600) == "~1 hr")
         #expect(ThrottlePolicy.humanDuration(3900) == "~1 hr 5 min")
     }
+
+    @Test("Stops early once consecutive failures reach the threshold")
+    func stopsAtThreshold() {
+        let policy = ThrottlePolicy()
+        #expect(policy.stopOnRepeatedFailures == true)   // on by default
+        #expect(policy.shouldStopEarly(consecutiveFailures: 0) == false)
+        #expect(policy.shouldStopEarly(consecutiveFailures: ThrottlePolicy.consecutiveFailureStopThreshold - 1) == false)
+        #expect(policy.shouldStopEarly(consecutiveFailures: ThrottlePolicy.consecutiveFailureStopThreshold) == true)
+        #expect(policy.shouldStopEarly(consecutiveFailures: ThrottlePolicy.consecutiveFailureStopThreshold + 5) == true)
+    }
+
+    @Test("Never stops early when the toggle is off")
+    func noStopWhenDisabled() {
+        let policy = ThrottlePolicy(stopOnRepeatedFailures: false)
+        #expect(policy.shouldStopEarly(consecutiveFailures: 100) == false)
+    }
 }
 
 struct SendingProviderTests {

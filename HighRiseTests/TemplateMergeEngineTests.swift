@@ -197,6 +197,47 @@ struct TemplateMergeEngineTests {
         #expect(template.referencedFields == ["Name", "Company", "Project"])
     }
 
+    // MARK: - Add fallback (Compose's one-click coverage-chip fix)
+
+    @Test("addingFallback adds a bare fallback to a plain placeholder")
+    func addingFallbackToPlainPlaceholder() {
+        let template = EmailTemplate(subject: "Hi {{Company}}", body: "About {{Company}} today")
+        let fixed = template.addingFallback("there", forField: "Company")
+        #expect(fixed.subject == "Hi {{Company|there}}")
+        #expect(fixed.body == "About {{Company|there}} today")
+    }
+
+    @Test("addingFallback inserts before existing transforms")
+    func addingFallbackKeepsExistingTransforms() {
+        let template = EmailTemplate(subject: "", body: "{{Company|upper}}")
+        let fixed = template.addingFallback("there", forField: "Company")
+        #expect(fixed.body == "{{Company|there|upper}}")
+    }
+
+    @Test("addingFallback skips occurrences that already have a fallback")
+    func addingFallbackSkipsExisting() {
+        let template = EmailTemplate(subject: "", body: "{{Company|Acme}} {{Company}}")
+        let fixed = template.addingFallback("there", forField: "Company")
+        // Already-fallback occurrence is untouched; the bare one gets fixed.
+        #expect(fixed.body == "{{Company|Acme}} {{Company|there}}")
+    }
+
+    @Test("addingFallback is case-insensitive and leaves other fields alone")
+    func addingFallbackCaseInsensitive() {
+        let template = EmailTemplate(subject: "", body: "{{company}} {{Project}}")
+        let fixed = template.addingFallback("there", forField: "Company")
+        #expect(fixed.body == "{{company|there}} {{Project}}")
+    }
+
+    @Test("addingFallback also fixes variant subject/body")
+    func addingFallbackFixesVariants() {
+        var variant = TemplateVariant()
+        variant.subject = "{{Company}}"
+        let template = EmailTemplate(subject: "", body: "", variants: [variant])
+        let fixed = template.addingFallback("there", forField: "Company")
+        #expect(fixed.variants[0].subject == "{{Company|there}}")
+    }
+
     // MARK: - Duplicate detection
 
     @Test("mergeAll flags later duplicate addresses and keeps the first sendable")

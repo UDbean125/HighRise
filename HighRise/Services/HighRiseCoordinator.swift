@@ -196,10 +196,31 @@ final class HighRiseCoordinator: ObservableObject {
     @Published private(set) var sendProgress: Double = 0
     @Published private(set) var outcomes: [SendOutcome] = []
 
+    /// Set when a run stopped itself early after too many consecutive
+    /// delivery failures (see `ThrottlePolicy.stopOnRepeatedFailures`), rather
+    /// than the whole queue's message just naturally ending. Cleared at the
+    /// start of every run.
+    @Published private(set) var stoppedEarlyReason: String?
+
     /// Where a "send test to myself" goes, and the result of the last attempt,
     /// shown inline on the Send screen.
     @Published var testRecipient: String = ""
     @Published private(set) var testSendResult: TestSendResult?
+
+    /// Which sendable recipient `sendTestToSelf()` samples — nil means "the
+    /// first ready one" (the longstanding default). Lets an edge-case row
+    /// (one using a fallback, an unusual name, a long value) be test-sent
+    /// specifically, instead of only ever seeing the first row in the list.
+    @Published var testSampleID: MergePreview.ID?
+
+    /// The recipient a test send will actually sample: the chosen one if it's
+    /// still sendable, else the first ready recipient.
+    var testSample: MergePreview? {
+        if let id = testSampleID, let match = sendablePreviews.first(where: { $0.id == id }) {
+            return match
+        }
+        return sendablePreviews.first
+    }
 
     struct TestSendResult: Equatable {
         let succeeded: Bool
@@ -352,6 +373,14 @@ final class HighRiseCoordinator: ObservableObject {
     var unmatchedTemplateFields: [String] {
         let available = Set(importedHeaders.map { $0.lowercased() })
         return template.fieldsRequiringData.filter { !available.contains($0.lowercased()) }
+    }
+
+    /// Adds a `|fallback` to every occurrence of `fieldName` that doesn't
+    /// already have one — the one-click fix behind Compose's "Add fallback"
+    /// action on a missing-coverage chip, so a field with no matching column
+    /// stops holding rows back.
+    func addFallback(_ fallback: String = "there", forField fieldName: String) {
+        template = template.addingFallback(fallback, forField: fieldName)
     }
 
     var canProceedToContacts: Bool {
@@ -622,22 +651,32 @@ final class HighRiseCoordinator: ObservableObject {
         scheduledQueue = []
     }
 
-    /// Re-runs only the recipients whose last attempt failed (transient errors
-    /// like a declined prompt or a briefly-unavailable client). Rows held back
-    /// for missing data aren't retried — those need corrected data re-imported.
-    func retryFailed() {
+    /// Recipients still worth attempting after the last run: those whose last
+    /// attempt failed, plus any never reached because the run stopped early
+    /// (repeated failures) or was cancelled partway through. Excludes anyone
+    /// who already sent/drafted successfully, so retrying never re-sends the
+    /// same message twice. Rows held back for missing data aren't included —
+    /// those need corrected data re-imported, not a retry.
+    private var retryableQueue: [MergePreview] {
+        guard !outcomes.isEmpty else { return [] }
+        let attemptedIDs = Set(outcomes.map(\.id))
         let failedIDs = Set(outcomes.compactMap { outcome -> UUID? in
             if case .failed = outcome.status { return outcome.id }
             return nil
         })
-        let queue = previews.filter { failedIDs.contains($0.id) && $0.isSendable }
-        cancelSchedule()
-        run(queue: queue)
+        return previews.filter { $0.isSendable && (failedIDs.contains($0.id) || !attemptedIDs.contains($0.id)) }
     }
 
-    /// How many of the last run's recipients failed (enables the retry action).
-    var failedCount: Int {
-        outcomes.filter { if case .failed = $0.status { return true }; return false }.count
+    /// How many recipients `retryRemaining()` would attempt (enables and
+    /// labels the retry action).
+    var retryableCount: Int { retryableQueue.count }
+
+    /// Re-runs the recipients `retryableQueue` identifies: failed attempts
+    /// plus anyone never reached.
+    func retryRemaining() {
+        let queue = retryableQueue
+        cancelSchedule()
+        run(queue: queue)
     }
 
     /// A complete per-recipient results report (sent/drafted/held/failed) for
@@ -739,11 +778,14 @@ final class HighRiseCoordinator: ObservableObject {
         isSending = true
         sendProgress = 0
         outcomes = []
+        stoppedEarlyReason = nil
         let mode = sendMode
+        let stopThreshold = ThrottlePolicy.consecutiveFailureStopThreshold
         Log.send.info("Starting \(mode == .send ? "send" : "draft", privacy: .public) of \(queue.count, privacy: .public) messages via \(self.selectedClient.rawValue, privacy: .public)")
 
         sendTask = Task { @MainActor in
             var collected: [SendOutcome] = []
+            var consecutiveFailures = 0
             for (index, preview) in queue.enumerated() {
                 if Task.isCancelled { break }
                 let (cc, bcc) = envelope.resolved(for: preview.contact)
@@ -765,13 +807,24 @@ final class HighRiseCoordinator: ObservableObject {
                 do {
                     try sender.deliver(message, mode: mode)
                     status = mode == .send ? .sent : .drafted
+                    consecutiveFailures = 0
                 } catch {
                     status = .failed(reason: error.localizedDescription)
+                    consecutiveFailures += 1
                     Log.send.error("Delivery failed for a recipient: \(error.localizedDescription, privacy: .public)")
                 }
                 collected.append(SendOutcome(id: preview.id, contact: preview.contact, status: status))
                 outcomes = collected
                 sendProgress = Double(index + 1) / Double(queue.count)
+
+                if throttle.shouldStopEarly(consecutiveFailures: consecutiveFailures) {
+                    let remaining = queue.count - collected.count
+                    stoppedEarlyReason = "Stopped after \(stopThreshold) failed sends in a row"
+                        + (remaining > 0 ? " — \(remaining) recipient\(remaining == 1 ? "" : "s") left untried." : ".")
+                        + " Check that \(selectedClient.rawValue) is working, then retry."
+                    Log.send.error("Run stopped early after \(consecutiveFailures, privacy: .public) consecutive failures")
+                    break
+                }
 
                 let delay = throttle.delayAfter(index: index, count: queue.count)
                 if delay > 0 {
@@ -791,10 +844,10 @@ final class HighRiseCoordinator: ObservableObject {
     }
 
     /// Sends (or drafts) one fully-merged sample message to the user's own
-    /// address so they can see the real inbox render before the run. Uses the
-    /// first ready recipient as the sample and the currently selected client and
-    /// mode, with a `[TEST]` subject prefix. Complements — doesn't replace — the
-    /// per-recipient review step.
+    /// address so they can see the real inbox render before the run. Samples
+    /// `testSample` (a chosen recipient, or the first ready one) using the
+    /// currently selected client and mode, with a `[TEST]` subject prefix.
+    /// Complements — doesn't replace — the per-recipient review step.
     func sendTestToSelf() {
         let target = testRecipient.trimmingCharacters(in: .whitespacesAndNewlines)
         guard EmailValidator.isValid(target) else {
@@ -802,7 +855,7 @@ final class HighRiseCoordinator: ObservableObject {
                 message: "Enter a valid email address to send yourself a test.")
             return
         }
-        guard let sample = sendablePreviews.first else {
+        guard let sample = testSample else {
             testSendResult = TestSendResult(succeeded: false,
                 message: "No ready message to test yet — import a list and compose your template first.")
             return
