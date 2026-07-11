@@ -364,6 +364,16 @@ struct SendView: View {
                     .font(.callout).foregroundStyle(.secondary)
             }
 
+            Divider()
+            VStack(alignment: .leading, spacing: 4) {
+                Toggle("Stop after \(ThrottlePolicy.consecutiveFailureStopThreshold) failed sends in a row",
+                       isOn: $coordinator.throttle.stopOnRepeatedFailures)
+                    .font(.subheadline)
+                Text("Catches a broken run early — a crashed mail client, a signed-out account — instead of working through the whole list while every message fails.")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             VStack(alignment: .leading, spacing: 6) {
                 Text("Sending account").font(.subheadline)
                 Picker("Sending account", selection: $coordinator.sendingProvider) {
@@ -623,9 +633,12 @@ struct SendView: View {
     private var testSendContent: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label("Send yourself a test", systemImage: "paperplane").font(.subheadline.weight(.semibold))
-            Text("Delivers one fully personalized sample — your first ready recipient — to your own address so you can check how it renders.")
+            Text("Delivers one fully personalized sample to your own address so you can check how it renders.")
                 .font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            if coordinator.sendablePreviews.count > 1 {
+                testSamplePicker
+            }
             HStack(spacing: 8) {
                 TextField("you@example.com", text: $coordinator.testRecipient)
                     .textFieldStyle(.roundedBorder)
@@ -644,6 +657,26 @@ struct SendView: View {
                     .foregroundStyle(result.succeeded ? .green : .orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    /// Picks which ready recipient the test samples — useful for checking an
+    /// edge case (a fallback value, an unusual name) rather than only ever
+    /// seeing whoever happens to be first in the list.
+    private var testSamplePicker: some View {
+        HStack(spacing: 8) {
+            Text("Sample").font(.callout).foregroundStyle(.secondary)
+            Picker("Sample recipient", selection: Binding(
+                get: { coordinator.testSampleID ?? coordinator.sendablePreviews.first?.id },
+                set: { coordinator.testSampleID = $0 }
+            )) {
+                ForEach(coordinator.sendablePreviews) { preview in
+                    Text("\(preview.contact.displayName) · \(preview.contact.email)")
+                        .tag(Optional(preview.id))
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 320)
         }
     }
 
@@ -724,6 +757,14 @@ struct SendView: View {
 
     private var resultsCard: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if let reason = coordinator.stoppedEarlyReason {
+                Label(reason, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout).foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
             HStack {
                 VStack(alignment: .leading, spacing: 1) {
                     Label("Results", systemImage: "list.bullet.clipboard").font(.headline)
@@ -733,11 +774,11 @@ struct SendView: View {
                     }
                 }
                 Spacer()
-                if coordinator.failedCount > 0 && !coordinator.isSending {
+                if coordinator.retryableCount > 0 && !coordinator.isSending {
                     Button {
-                        coordinator.retryFailed()
+                        coordinator.retryRemaining()
                     } label: {
-                        Label("Retry \(coordinator.failedCount) failed", systemImage: "arrow.clockwise")
+                        Label("Retry \(coordinator.retryableCount) remaining", systemImage: "arrow.clockwise")
                     }
                 }
                 if coordinator.hasResultsToExport {

@@ -8,6 +8,7 @@ struct ReviewView: View {
     @State private var selection: MergePreview.ID?
     @State private var searchText = ""
     @State private var statusFilter: StatusFilter = .all
+    @State private var domainFilter: String?
 
     enum StatusFilter: String, CaseIterable, Identifiable {
         case all = "All", ready = "Ready", held = "Held"
@@ -17,7 +18,7 @@ struct ReviewView: View {
     private var previews: [MergePreview] { coordinator.previews }
     private var summary: ReviewSummary.Summary { ReviewSummary.of(previews) }
 
-    /// The list after the search box and status chips are applied.
+    /// The list after the search box, status filter, and domain chip are applied.
     private var filteredPreviews: [MergePreview] {
         previews.filter { preview in
             let statusOK: Bool
@@ -27,10 +28,21 @@ struct ReviewView: View {
             case .held:  statusOK = !preview.isSendable
             }
             guard statusOK else { return false }
+            if let domainFilter, EmailDomainStats.domain(of: preview.contact.email) != domainFilter {
+                return false
+            }
             guard !searchText.isEmpty else { return true }
             return preview.contact.displayName.localizedCaseInsensitiveContains(searchText)
                 || preview.contact.email.localizedCaseInsensitiveContains(searchText)
         }
+    }
+
+    /// Domains present in this list, most common first — lets a large
+    /// multi-company list be scoped to one domain without typing it out.
+    /// Only worth showing once there's an actual choice to make.
+    private var domainOptions: [EmailDomainStats.Entry] {
+        let stats = EmailDomainStats.of(previews.map(\.contact), topN: previews.count)
+        return stats.entries.count >= 2 ? stats.entries : []
     }
 
     var body: some View {
@@ -52,6 +64,7 @@ struct ReviewView: View {
         }
         .onChange(of: searchText) { _, _ in reconcileSelection() }
         .onChange(of: statusFilter) { _, _ in reconcileSelection() }
+        .onChange(of: domainFilter) { _, _ in reconcileSelection() }
     }
 
     /// Keeps a sensible selection when the filter hides the current one.
@@ -148,6 +161,7 @@ struct ReviewView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+                domainFilterRow
             }
             .padding(10)
             if filteredPreviews.isEmpty {
@@ -166,6 +180,31 @@ struct ReviewView: View {
         }
     }
 
+    /// Tappable domain chips so a large multi-company list can be scoped to
+    /// one domain without typing it into search. Hidden unless there's more
+    /// than one domain to choose from.
+    @ViewBuilder
+    private var domainFilterRow: some View {
+        let options = domainOptions
+        if !options.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(options) { entry in
+                        let isOn = domainFilter == entry.domain
+                        Button {
+                            domainFilter = isOn ? nil : entry.domain
+                        } label: {
+                            Text("\(entry.domain) (\(entry.count))")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(isOn ? Brand.accent : .secondary)
+                    }
+                }
+            }
+        }
+    }
+
     /// A scannable row: initials avatar, name + address, and a status pill so
     /// "who's ready vs held" reads at a glance without opening each one.
     private func recipientRow(_ preview: MergePreview) -> some View {
@@ -178,6 +217,10 @@ struct ReviewView: View {
             Spacer(minLength: 4)
             if preview.isSendable {
                 StatusPill(text: "Ready", color: .green, systemImage: "checkmark")
+            } else if let category = PreSendReport.category(of: preview) {
+                // The specific reason, not just "Held" — so scanning the list
+                // shows what to fix without opening each recipient's detail.
+                StatusPill(text: heldShortLabel(category), color: .orange, systemImage: heldIcon(category))
             } else {
                 StatusPill(text: "Held", color: .orange, systemImage: "exclamationmark.triangle.fill")
             }

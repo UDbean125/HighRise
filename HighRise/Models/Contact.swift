@@ -18,11 +18,17 @@ struct Contact: Identifiable, Hashable {
     /// promoted to its own property because every send needs it.
     var email: String
 
-    /// Case-insensitive, whitespace-tolerant field lookup.
-    /// `{{ company }}`, `{{Company}}`, and `{{COMPANY}}` all resolve the same.
+    /// Case-insensitive, whitespace-tolerant field lookup that also
+    /// recognizes common synonyms (`{{Company}}` resolves an "Account Name"
+    /// column — see `FieldSynonyms`). Prefers a literal match over a
+    /// synonym one when both exist, so an imported list that happens to have
+    /// both "Company" and "Account" columns isn't ambiguous.
     func value(for key: String) -> String? {
         let wanted = key.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         for (header, value) in fields where header.lowercased() == wanted {
+            return value
+        }
+        for (header, value) in fields where FieldSynonyms.match(header, key) {
             return value
         }
         return nil

@@ -546,9 +546,11 @@ struct TemplateEditorView: View {
                     let report = FieldCoverage.assess(template: coordinator.template,
                                                       headers: coordinator.importedHeaders)
                     coverageSummaryLabel(report)
-                    CoverageChipsRow(report: report)
+                    CoverageChipsRow(report: report) { field in
+                        coordinator.addFallback(forField: field.name)
+                    }
                     if !report.missing.isEmpty {
-                        Label("No column for \(report.missing.map(\.name).joined(separator: ", ")) — add a matching column or a fallback like {{Field|there}}, or those rows are held back.",
+                        Label("No column for \(report.missing.map(\.name).joined(separator: ", ")) — click a chip above to add a fallback, or add a matching column, or those rows are held back.",
                               systemImage: "exclamationmark.triangle.fill")
                             .font(.callout).foregroundStyle(.orange)
                             .fixedSize(horizontal: false, vertical: true)
@@ -609,25 +611,41 @@ struct FieldChipsRow: View {
 /// Merge-field chips colored by how the imported list covers each field: green
 /// when a column backs it, orange when a required field has no column (rows are
 /// held back), and gray when it's only ever used with a fallback (safe). A quick
-/// read of "will my merge actually resolve?" without leaving Compose.
+/// read of "will my merge actually resolve?" without leaving Compose. Missing
+/// (orange) chips are clickable — one click adds a `|there` fallback to every
+/// bare occurrence of that field, the same fix the merge-syntax guide only
+/// ever described in prose.
 struct CoverageChipsRow: View {
     let report: FieldCoverage.Report
+    var onAddFallback: ((FieldCoverage.Field) -> Void)?
 
     var body: some View {
         let columns = [GridItem(.adaptive(minimum: 90, maximum: 240), spacing: 8, alignment: .leading)]
         LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
             ForEach(report.fields) { field in
-                HStack(spacing: 4) {
-                    Image(systemName: icon(field.status)).font(.caption2)
-                    Text(field.name).font(.callout.monospaced()).lineLimit(1)
+                if field.status == .missing, let onAddFallback {
+                    Button { onAddFallback(field) } label: { chip(field) }
+                        .buttonStyle(.plain)
+                        .help("No matching column — click to add a fallback (\(field.name)|there) so these rows aren't held back.")
+                } else {
+                    chip(field).help(helpText(field.status))
                 }
-                .foregroundStyle(color(field.status))
-                .padding(.horizontal, 10).padding(.vertical, 4)
-                .background(color(field.status).opacity(0.15), in: Capsule())
-                .contentShape(Capsule())
-                .help(helpText(field.status))
             }
         }
+    }
+
+    private func chip(_ field: FieldCoverage.Field) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon(field.status)).font(.caption2)
+            Text(field.name).font(.callout.monospaced()).lineLimit(1)
+            if field.status == .missing {
+                Image(systemName: "plus.circle.fill").font(.caption2)
+            }
+        }
+        .foregroundStyle(color(field.status))
+        .padding(.horizontal, 10).padding(.vertical, 4)
+        .background(color(field.status).opacity(0.15), in: Capsule())
+        .contentShape(Capsule())
     }
 
     private func color(_ status: FieldCoverage.Status) -> Color {
@@ -648,7 +666,7 @@ struct CoverageChipsRow: View {
 
     private func helpText(_ status: FieldCoverage.Status) -> String {
         switch status {
-        case .matched:  return "Backed by a column in your imported list."
+        case .matched:  return "Backed by a column in your imported list — including recognized synonyms, e.g. an \u{201C}Account\u{201D} or \u{201C}Account Name\u{201D} column backs \u{201C}Company\u{201D}."
         case .missing:  return "No matching column — add one or a fallback, or these rows are held back."
         case .fallback: return "No column, but every use has a fallback, so it won't hold rows back."
         }

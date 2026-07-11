@@ -73,9 +73,31 @@ final class HighRiseCoordinator: ObservableObject {
 
     @Published private(set) var contacts: [Contact] = []
     @Published private(set) var importedHeaders: [String] = []
-    @Published var emailColumn: String? { didSet { remapContacts() } }
+    @Published var emailColumn: String? {
+        didSet {
+            guard !isBulkUpdating else { return }
+            remapContacts()
+        }
+    }
     @Published private(set) var importSummary: String?
     @Published var importError: String?
+
+    /// True while a fresh import (file read + clean + contact-building) is
+    /// running in the background — a real CRM export can be 100,000+ rows,
+    /// so this can take several seconds. The screen shows a progress state
+    /// instead of looking frozen or having silently failed.
+    @Published private(set) var isImporting = false
+
+    /// Suppresses `emailColumn`'s `didSet` while `ingest` assigns the
+    /// already-computed result back — without this, that assignment would
+    /// kick off a second, redundant (and synchronous, on the main thread)
+    /// `remapContacts()` pass right after the background one just finished.
+    private var isBulkUpdating = false
+
+    /// Rows dropped from the current import because their email column was
+    /// blank — shown in full on the Contacts screen so "N rows skipped" is
+    /// never a dead end.
+    @Published private(set) var skippedRows: [CSVParser.SkippedRow] = []
 
     /// What the automatic import cleanup fixed (stray whitespace, spreadsheet
     /// junk tokens, mangled emails, repeated header rows) — disclosed in full
@@ -191,10 +213,31 @@ final class HighRiseCoordinator: ObservableObject {
     @Published private(set) var sendProgress: Double = 0
     @Published private(set) var outcomes: [SendOutcome] = []
 
+    /// Set when a run stopped itself early after too many consecutive
+    /// delivery failures (see `ThrottlePolicy.stopOnRepeatedFailures`), rather
+    /// than the whole queue's message just naturally ending. Cleared at the
+    /// start of every run.
+    @Published private(set) var stoppedEarlyReason: String?
+
     /// Where a "send test to myself" goes, and the result of the last attempt,
     /// shown inline on the Send screen.
     @Published var testRecipient: String = ""
     @Published private(set) var testSendResult: TestSendResult?
+
+    /// Which sendable recipient `sendTestToSelf()` samples — nil means "the
+    /// first ready one" (the longstanding default). Lets an edge-case row
+    /// (one using a fallback, an unusual name, a long value) be test-sent
+    /// specifically, instead of only ever seeing the first row in the list.
+    @Published var testSampleID: MergePreview.ID?
+
+    /// The recipient a test send will actually sample: the chosen one if it's
+    /// still sendable, else the first ready recipient.
+    var testSample: MergePreview? {
+        if let id = testSampleID, let match = sendablePreviews.first(where: { $0.id == id }) {
+            return match
+        }
+        return sendablePreviews.first
+    }
 
     struct TestSendResult: Equatable {
         let succeeded: Bool
@@ -345,8 +388,20 @@ final class HighRiseCoordinator: ObservableObject {
     /// Fields whose every use carries a `{{Field|fallback}}` are exempt: they
     /// can't block a send, so a missing column isn't a problem.
     var unmatchedTemplateFields: [String] {
-        let available = Set(importedHeaders.map { $0.lowercased() })
-        return template.fieldsRequiringData.filter { !available.contains($0.lowercased()) }
+        // Recognizes synonyms too ("Company" is backed by an "Account Name"
+        // column) — see `FieldSynonyms` — so this agrees with `FieldCoverage`
+        // and with what the merge itself actually resolves.
+        template.fieldsRequiringData.filter { field in
+            !importedHeaders.contains { FieldSynonyms.match($0, field) }
+        }
+    }
+
+    /// Adds a `|fallback` to every occurrence of `fieldName` that doesn't
+    /// already have one — the one-click fix behind Compose's "Add fallback"
+    /// action on a missing-coverage chip, so a field with no matching column
+    /// stops holding rows back.
+    func addFallback(_ fallback: String = "there", forField fieldName: String) {
+        template = template.addingFallback(fallback, forField: fieldName)
     }
 
     var canProceedToContacts: Bool {
@@ -363,37 +418,33 @@ final class HighRiseCoordinator: ObservableObject {
     /// origin — CSV, Excel, Word/PDF, Apple Contacts, Outlook — it is reduced to
     /// a `RecipientTable` (headers + rows) and ingested here, so email-column
     /// detection, preview, and merge behave identically regardless of source.
-    func ingest(_ table: RecipientTable, sourceLabel: String) {
+    ///
+    /// The heavy work (`ImportPipeline.run`) happens off the main thread —
+    /// see that type's doc comment for why. Callers are expected to already
+    /// have `isImporting` set; this only owns the compute-and-apply step.
+    func ingest(_ table: RecipientTable, sourceLabel: String) async {
         rawTable = table
         appliedSuggestions = []
         cleanupEnabled = true
         importError = nil
 
-        // Column detection runs on the cleaned data — that's what the user
-        // will see, and repairs (mailto:, NBSP headers…) improve detection.
-        let (cleaned, _) = ImportCleaner.autoClean(table)
-        importedHeaders = cleaned.headers
-        attachmentColumn = Self.detectAttachmentColumn(in: cleaned.headers)
+        let result = await Task.detached(priority: .userInitiated) {
+            ImportPipeline.run(table: table, sourceLabel: sourceLabel, cleanupEnabled: true,
+                              appliedSuggestions: [], emailColumnOverride: nil)
+        }.value
 
-        // Choosing the email column repopulates `contacts` via `didSet`;
-        // when detection lands on the column already selected, remap by hand.
-        let detected = CSVParser.detectEmailColumn(in: cleaned)
-        if emailColumn != detected {
-            emailColumn = detected
-        } else {
-            remapContacts()
-        }
-
-        let rowCount = parsedTable?.rows.count ?? table.rows.count
-        let skipped = max(0, rowCount - contacts.count)
-        var summary = "Imported \(contacts.count) contact\(contacts.count == 1 ? "" : "s") from \(sourceLabel)"
-        if let detected { summary += " · email column: “\(detected)”" }
-        if skipped > 0 { summary += " · \(skipped) row\(skipped == 1 ? "" : "s") skipped (no email)" }
-        if cleanupReport.totalFixes > 0 {
-            summary += " · \(cleanupReport.totalFixes) value\(cleanupReport.totalFixes == 1 ? "" : "s") auto-cleaned"
-        }
-        importSummary = summary
-        Log.csv.info("Ingested \(self.contacts.count, privacy: .public) contacts from \(sourceLabel, privacy: .public); skipped \(skipped, privacy: .public); auto-cleaned \(self.cleanupReport.totalFixes, privacy: .public) values")
+        importedHeaders = result.importedHeaders
+        attachmentColumn = result.attachmentColumn
+        isBulkUpdating = true
+        emailColumn = result.emailColumn
+        isBulkUpdating = false
+        cleanupReport = result.cleanupReport
+        cleanupSuggestions = result.cleanupSuggestions
+        parsedTable = result.parsedTable
+        contacts = result.contacts
+        skippedRows = result.skippedRows
+        importSummary = result.importSummary
+        Log.csv.info("Ingested \(result.contacts.count, privacy: .public) contacts from \(sourceLabel, privacy: .public); auto-cleaned \(result.cleanupReport.totalFixes, privacy: .public) values")
     }
 
     /// Records a failed import and clears any partial state.
@@ -407,97 +458,148 @@ final class HighRiseCoordinator: ObservableObject {
         cleanupReport = .empty
         cleanupSuggestions = []
         appliedSuggestions = []
+        skippedRows = []
         clearWorkbookSelection()
         Log.csv.error("Import failed: \(message, privacy: .public)")
     }
 
     /// Parses CSV text into contacts. Auto-detects the email column unless one
-    /// was already chosen.
-    func importCSV(_ text: String) {
+    /// was already chosen. Parsing runs off the main thread — a pasted list
+    /// can be tens of thousands of lines.
+    func importCSV(_ text: String) async {
+        isImporting = true
+        defer { isImporting = false }
         do {
-            let table = try CSVParser.parse(text)
-            ingest(table, sourceLabel: "pasted text")
+            let table = try await Task.detached(priority: .userInitiated) {
+                try CSVParser.parse(text)
+            }.value
+            await ingest(table, sourceLabel: "pasted text")
         } catch {
             reportImportFailure(error.localizedDescription)
         }
     }
 
-    /// Routes a dropped/chosen file to the right reader based on its extension.
-    func importFile(at url: URL) {
+    private enum ImportFileError: Error {
+        case unrecognizedEncoding(String)
+        var message: String {
+            switch self {
+            case .unrecognizedEncoding(let name):
+                return "Couldn't read \(name) — its text encoding isn't recognized. Re-save it as UTF-8 CSV."
+            }
+        }
+    }
+
+    /// Routes a dropped/chosen file to the right reader based on its
+    /// extension. Reading and parsing run off the main thread — a real CRM
+    /// export can be 100,000+ rows and tens of megabytes, and doing that
+    /// synchronously on the main thread makes the app look hung (or worse,
+    /// like it silently failed) for the many seconds it takes.
+    func importFile(at url: URL) async {
         let ext = url.pathExtension.lowercased()
         // Any new file supersedes a previously loaded workbook's sheet picker.
         clearWorkbookSelection()
-        do {
-            switch ext {
-            case "csv", "tsv", "txt":
-                let data = try Data(contentsOf: url)
-                guard let text = CSVParser.decode(data) else {
-                    reportImportFailure("Couldn't read \(url.lastPathComponent) — its text encoding isn't recognized. Re-save it as UTF-8 CSV.")
-                    return
-                }
-                // TSV files are tab-delimited; other text auto-detects.
-                let table = try CSVParser.parse(text, delimiter: ext == "tsv" ? "\t" : nil)
-                ingest(table, sourceLabel: url.lastPathComponent)
-            case "numbers":
-                reportImportFailure("Apple Numbers files can't be read directly. In Numbers, choose File ▸ Export To ▸ CSV… (or Excel), then import that file.")
-            case "xlsx":
-                let sheets = (try? XLSXReader.worksheets(in: url)) ?? []
-                let table = try XLSXReader.read(url)
+        isImporting = true
+        defer { isImporting = false }
+
+        switch ext {
+        case "csv", "tsv", "txt":
+            do {
+                let table = try await Task.detached(priority: .userInitiated) {
+                    let data = try Data(contentsOf: url)
+                    guard let text = CSVParser.decode(data) else {
+                        throw ImportFileError.unrecognizedEncoding(url.lastPathComponent)
+                    }
+                    // TSV files are tab-delimited; other text auto-detects.
+                    return try CSVParser.parse(text, delimiter: ext == "tsv" ? "\t" : nil)
+                }.value
+                await ingest(table, sourceLabel: url.lastPathComponent)
+            } catch let error as ImportFileError {
+                reportImportFailure(error.message)
+            } catch {
+                reportImportFailure("Couldn't read \(url.lastPathComponent): \(error.localizedDescription)")
+            }
+        case "numbers":
+            reportImportFailure("Apple Numbers files can't be read directly. In Numbers, choose File ▸ Export To ▸ CSV… (or Excel), then import that file.")
+        case "xlsx":
+            do {
+                let (sheets, table) = try await Task.detached(priority: .userInitiated) {
+                    let sheets = (try? XLSXReader.worksheets(in: url)) ?? []
+                    let table = try XLSXReader.read(url)
+                    return (sheets, table)
+                }.value
                 // Only offer the picker when there's a real choice to make.
                 if sheets.count > 1 {
                     workbookURL = url
                     availableWorksheets = sheets
                     selectedWorksheet = sheets.first?.name
                 }
-                ingest(table, sourceLabel: sheetSourceLabel(url, sheet: selectedWorksheet))
-            case "docx", "pdf":
-                let text = try DocumentTextExtractor.extractText(from: url)
-                let table = LooseContactExtractor.table(from: text)
+                await ingest(table, sourceLabel: sheetSourceLabel(url, sheet: selectedWorksheet))
+            } catch {
+                reportImportFailure("Couldn't read \(url.lastPathComponent): \(error.localizedDescription)")
+            }
+        case "docx", "pdf":
+            do {
+                let table = try await Task.detached(priority: .userInitiated) {
+                    let text = try DocumentTextExtractor.extractText(from: url)
+                    return LooseContactExtractor.table(from: text)
+                }.value
                 guard !table.rows.isEmpty else {
                     reportImportFailure("No email addresses were found in \(url.lastPathComponent). Try a CSV or Excel export for reliable results.")
                     return
                 }
-                ingest(table, sourceLabel: url.lastPathComponent)
-            default:
-                reportImportFailure("Unsupported file type: .\(ext)")
+                await ingest(table, sourceLabel: url.lastPathComponent)
+            } catch {
+                reportImportFailure("Couldn't read \(url.lastPathComponent): \(error.localizedDescription)")
             }
-        } catch {
-            reportImportFailure("Couldn't read \(url.lastPathComponent): \(error.localizedDescription)")
+        default:
+            reportImportFailure("Unsupported file type: .\(ext)")
         }
     }
 
     /// Imports recipients from the user's Apple/iCloud address book.
     func importFromAppleContacts() async {
+        isImporting = true
+        defer { isImporting = false }
         do {
             let table = try await ContactsImporter.fetchTable()
-            ingest(table, sourceLabel: "Apple Contacts")
+            await ingest(table, sourceLabel: "Apple Contacts")
         } catch {
             reportImportFailure(error.localizedDescription)
         }
     }
 
     /// Imports recipients from Microsoft Outlook's contacts via automation.
-    func importFromOutlookContacts() {
+    /// `OutlookContactsImporter` is itself main-actor-isolated (it drives
+    /// AppleScript), so this runs on the main actor rather than detached —
+    /// Outlook address books are typically far smaller than a CRM export.
+    func importFromOutlookContacts() async {
+        isImporting = true
+        defer { isImporting = false }
         do {
             let table = try OutlookContactsImporter.fetchTable()
             guard !table.rows.isEmpty else {
                 reportImportFailure("No Outlook contacts with email addresses were found.")
                 return
             }
-            ingest(table, sourceLabel: "Outlook Contacts")
+            await ingest(table, sourceLabel: "Outlook Contacts")
         } catch {
             reportImportFailure(error.localizedDescription)
         }
     }
 
     /// Re-imports the loaded workbook using a different worksheet tab.
-    func selectWorksheet(_ name: String) {
+    func selectWorksheet(_ name: String) async {
         guard let url = workbookURL, name != selectedWorksheet else { return }
+        isImporting = true
+        defer { isImporting = false }
         do {
-            let table = try XLSXReader.read(url, sheetName: name)
+            let table = try await Task.detached(priority: .userInitiated) {
+                try XLSXReader.read(url, sheetName: name)
+            }.value
             selectedWorksheet = name
-            emailColumn = nil // headers may differ between sheets; re-detect
-            ingest(table, sourceLabel: sheetSourceLabel(url, sheet: name))
+            // Headers may differ between sheets — `ingest` always re-detects
+            // the email column fresh, so no need to clear it here first.
+            await ingest(table, sourceLabel: sheetSourceLabel(url, sheet: name))
         } catch {
             reportImportFailure("Couldn't read “\(name)”: \(error.localizedDescription)")
         }
@@ -513,15 +615,6 @@ final class HighRiseCoordinator: ObservableObject {
         workbookURL = nil
         availableWorksheets = []
         selectedWorksheet = nil
-    }
-
-    /// Guesses an attachment column from the headers (a column named
-    /// "attachment"/"attachments"/"file"/"files"), else nil.
-    static func detectAttachmentColumn(in headers: [String]) -> String? {
-        headers.first {
-            let h = $0.lowercased()
-            return h == "attachment" || h == "attachments" || h == "file" || h == "files"
-        }
     }
 
     private func remapContacts() {
@@ -541,8 +634,10 @@ final class HighRiseCoordinator: ObservableObject {
             cleanupSuggestions = []
         }
         importedHeaders = parsedTable?.headers ?? []
-        let (parsedContacts, _) = CSVParser.contacts(from: parsedTable ?? raw, emailHeader: emailColumn)
+        let effectiveTable = parsedTable ?? raw
+        let (parsedContacts, _) = CSVParser.contacts(from: effectiveTable, emailHeader: emailColumn)
         contacts = parsedContacts
+        skippedRows = CSVParser.skippedRows(from: effectiveTable, emailHeader: emailColumn)
     }
 
     /// Applies one suggested repair (domain typo, casing, name order) to the
@@ -614,22 +709,32 @@ final class HighRiseCoordinator: ObservableObject {
         scheduledQueue = []
     }
 
-    /// Re-runs only the recipients whose last attempt failed (transient errors
-    /// like a declined prompt or a briefly-unavailable client). Rows held back
-    /// for missing data aren't retried — those need corrected data re-imported.
-    func retryFailed() {
+    /// Recipients still worth attempting after the last run: those whose last
+    /// attempt failed, plus any never reached because the run stopped early
+    /// (repeated failures) or was cancelled partway through. Excludes anyone
+    /// who already sent/drafted successfully, so retrying never re-sends the
+    /// same message twice. Rows held back for missing data aren't included —
+    /// those need corrected data re-imported, not a retry.
+    private var retryableQueue: [MergePreview] {
+        guard !outcomes.isEmpty else { return [] }
+        let attemptedIDs = Set(outcomes.map(\.id))
         let failedIDs = Set(outcomes.compactMap { outcome -> UUID? in
             if case .failed = outcome.status { return outcome.id }
             return nil
         })
-        let queue = previews.filter { failedIDs.contains($0.id) && $0.isSendable }
-        cancelSchedule()
-        run(queue: queue)
+        return previews.filter { $0.isSendable && (failedIDs.contains($0.id) || !attemptedIDs.contains($0.id)) }
     }
 
-    /// How many of the last run's recipients failed (enables the retry action).
-    var failedCount: Int {
-        outcomes.filter { if case .failed = $0.status { return true }; return false }.count
+    /// How many recipients `retryRemaining()` would attempt (enables and
+    /// labels the retry action).
+    var retryableCount: Int { retryableQueue.count }
+
+    /// Re-runs the recipients `retryableQueue` identifies: failed attempts
+    /// plus anyone never reached.
+    func retryRemaining() {
+        let queue = retryableQueue
+        cancelSchedule()
+        run(queue: queue)
     }
 
     /// A complete per-recipient results report (sent/drafted/held/failed) for
@@ -731,11 +836,14 @@ final class HighRiseCoordinator: ObservableObject {
         isSending = true
         sendProgress = 0
         outcomes = []
+        stoppedEarlyReason = nil
         let mode = sendMode
+        let stopThreshold = ThrottlePolicy.consecutiveFailureStopThreshold
         Log.send.info("Starting \(mode == .send ? "send" : "draft", privacy: .public) of \(queue.count, privacy: .public) messages via \(self.selectedClient.rawValue, privacy: .public)")
 
         sendTask = Task { @MainActor in
             var collected: [SendOutcome] = []
+            var consecutiveFailures = 0
             for (index, preview) in queue.enumerated() {
                 if Task.isCancelled { break }
                 let (cc, bcc) = envelope.resolved(for: preview.contact)
@@ -757,13 +865,24 @@ final class HighRiseCoordinator: ObservableObject {
                 do {
                     try sender.deliver(message, mode: mode)
                     status = mode == .send ? .sent : .drafted
+                    consecutiveFailures = 0
                 } catch {
                     status = .failed(reason: error.localizedDescription)
+                    consecutiveFailures += 1
                     Log.send.error("Delivery failed for a recipient: \(error.localizedDescription, privacy: .public)")
                 }
                 collected.append(SendOutcome(id: preview.id, contact: preview.contact, status: status))
                 outcomes = collected
                 sendProgress = Double(index + 1) / Double(queue.count)
+
+                if throttle.shouldStopEarly(consecutiveFailures: consecutiveFailures) {
+                    let remaining = queue.count - collected.count
+                    stoppedEarlyReason = "Stopped after \(stopThreshold) failed sends in a row"
+                        + (remaining > 0 ? " — \(remaining) recipient\(remaining == 1 ? "" : "s") left untried." : ".")
+                        + " Check that \(selectedClient.rawValue) is working, then retry."
+                    Log.send.error("Run stopped early after \(consecutiveFailures, privacy: .public) consecutive failures")
+                    break
+                }
 
                 let delay = throttle.delayAfter(index: index, count: queue.count)
                 if delay > 0 {
@@ -783,10 +902,10 @@ final class HighRiseCoordinator: ObservableObject {
     }
 
     /// Sends (or drafts) one fully-merged sample message to the user's own
-    /// address so they can see the real inbox render before the run. Uses the
-    /// first ready recipient as the sample and the currently selected client and
-    /// mode, with a `[TEST]` subject prefix. Complements — doesn't replace — the
-    /// per-recipient review step.
+    /// address so they can see the real inbox render before the run. Samples
+    /// `testSample` (a chosen recipient, or the first ready one) using the
+    /// currently selected client and mode, with a `[TEST]` subject prefix.
+    /// Complements — doesn't replace — the per-recipient review step.
     func sendTestToSelf() {
         let target = testRecipient.trimmingCharacters(in: .whitespacesAndNewlines)
         guard EmailValidator.isValid(target) else {
@@ -794,7 +913,7 @@ final class HighRiseCoordinator: ObservableObject {
                 message: "Enter a valid email address to send yourself a test.")
             return
         }
-        guard let sample = sendablePreviews.first else {
+        guard let sample = testSample else {
             testSendResult = TestSendResult(succeeded: false,
                 message: "No ready message to test yet — import a list and compose your template first.")
             return
