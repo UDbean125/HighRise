@@ -54,30 +54,33 @@ jobs:
       # The iOS companion (HighRiseMobile) has no AppleScript to drive Mail/
       # Outlook, so it can't reuse the macOS send path — it reuses the shared
       # Foundation-only import/merge core and hands off to
-      # MFMailComposeViewController instead. Picks whatever iOS Simulator
-      # destination the runner's Xcode reports, so it doesn't hardcode a
-      # device name that drifts as runner images update.
+      # MFMailComposeViewController instead.
+      #
+      # Finding a simulator: `xcodebuild -showdestinations` was tried first,
+      # but right after a fresh `xcodegen generate` it can report only the
+      # generic placeholder destination ("Any iOS Simulator Device") with no
+      # real device UUIDs yet, which broke both a `simctl create` fallback
+      # (the runtime name "iOS-latest" isn't valid — simctl rejected it) and
+      # a second -showdestinations retry (which then picked the placeholder
+      # itself). Querying `simctl list devices` directly sidesteps all of
+      # that — the runner images ship with real iOS Simulator devices
+      # pre-installed, so this just needs one of their UDIDs (preferring an
+      # iPhone, but any available iOS device works).
       - name: Test iOS app
         run: |
           set -o pipefail
-          # `|| true` on each DEST= assignment matters: with pipefail (and the
-          # implicit `bash -e` GitHub Actions runs steps under), grep finding
-          # zero matches makes the whole assignment "fail", which aborts the
-          # script right here — before the `if [ -z "$DEST" ]` fallback below
-          # ever runs. Without it, a runner with no iOS Simulator destination
-          # yet available exits in ~3s instead of falling back to simctl create.
-          DEST=$(xcodebuild -showdestinations -scheme HighRiseMobile 2>/dev/null \
-            | grep 'platform:iOS Simulator' \
-            | grep -v 'placeholder' \
-            | head -1 \
-            | sed -E 's/.*id:([^,]+),.*/\1/') || true
+          DEST=$(xcrun simctl list devices available -j | jq -r '
+            .devices
+            | to_entries
+            | map(select(.key | test("iOS"; "i")))
+            | map(.value[])
+            | map(select(.isAvailable))
+            | (map(select(.name | test("iPhone"))) + .)
+            | .[0].udid // empty
+          ')
           if [ -z "$DEST" ]; then
-            echo "No real simulator found, attempting to create one..."
-            xcrun simctl create "CI Simulator" "iPhone 15" "iOS-latest" || true
-            DEST=$(xcodebuild -showdestinations -scheme HighRiseMobile 2>/dev/null \
-              | grep 'platform:iOS Simulator' \
-              | head -1 \
-              | sed -E 's/.*id:([^,]+),.*/\1/') || true
+            echo "::error::No available iOS Simulator device found on this runner."
+            exit 1
           fi
           echo "Using simulator id: $DEST"
           xcodebuild test \
