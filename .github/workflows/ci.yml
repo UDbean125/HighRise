@@ -61,8 +61,18 @@ jobs:
         run: |
           set -o pipefail
           DEST=$(xcodebuild -showdestinations -scheme HighRiseMobile 2>/dev/null \
-            | grep -m1 'platform:iOS Simulator' \
+            | grep 'platform:iOS Simulator' \
+            | grep -v 'placeholder' \
+            | head -1 \
             | sed -E 's/.*id:([^,]+),.*/\1/')
+          if [ -z "$DEST" ]; then
+            echo "No real simulator found, attempting to create one..."
+            xcrun simctl create "CI Simulator" "iPhone 15" "iOS-latest" || true
+            DEST=$(xcodebuild -showdestinations -scheme HighRiseMobile 2>/dev/null \
+              | grep 'platform:iOS Simulator' \
+              | head -1 \
+              | sed -E 's/.*id:([^,]+),.*/\1/')
+          fi
           echo "Using simulator id: $DEST"
           xcodebuild test \
             -scheme HighRiseMobile \
