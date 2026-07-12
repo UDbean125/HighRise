@@ -60,18 +60,24 @@ jobs:
       - name: Test iOS app
         run: |
           set -o pipefail
+          # `|| true` on each DEST= assignment matters: with pipefail (and the
+          # implicit `bash -e` GitHub Actions runs steps under), grep finding
+          # zero matches makes the whole assignment "fail", which aborts the
+          # script right here — before the `if [ -z "$DEST" ]` fallback below
+          # ever runs. Without it, a runner with no iOS Simulator destination
+          # yet available exits in ~3s instead of falling back to simctl create.
           DEST=$(xcodebuild -showdestinations -scheme HighRiseMobile 2>/dev/null \
             | grep 'platform:iOS Simulator' \
             | grep -v 'placeholder' \
             | head -1 \
-            | sed -E 's/.*id:([^,]+),.*/\1/')
+            | sed -E 's/.*id:([^,]+),.*/\1/') || true
           if [ -z "$DEST" ]; then
             echo "No real simulator found, attempting to create one..."
             xcrun simctl create "CI Simulator" "iPhone 15" "iOS-latest" || true
             DEST=$(xcodebuild -showdestinations -scheme HighRiseMobile 2>/dev/null \
               | grep 'platform:iOS Simulator' \
               | head -1 \
-              | sed -E 's/.*id:([^,]+),.*/\1/')
+              | sed -E 's/.*id:([^,]+),.*/\1/') || true
           fi
           echo "Using simulator id: $DEST"
           xcodebuild test \
