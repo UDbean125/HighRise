@@ -85,10 +85,13 @@ project change is needed.
 
 ## 4. Wiring iOS / iPadOS and Windows
 
-* **iOS / iPadOS** — there's no iOS target in this repo yet. When one is added,
-  copy `Icons/AppIcon-iOS.appiconset` into its asset catalog as
-  `AppIcon.appiconset` and set `ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon`.
-  The single 1024 "universal" entry covers iPhone and iPad on Xcode 14+.
+* **iOS / iPadOS** — **already wired.** `HighRiseMobile/Assets.xcassets/AppIcon.appiconset/`
+  carries the same `Icons/AppIcon-iOS.appiconset` 1024 "universal" PNG (covers
+  iPhone and iPad on Xcode 14+), and `project.yml` sets
+  `ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon` on the `HighRiseMobile` target.
+  Re-run `./Icons/make-icons.sh --ios … --install` (once it supports an iOS
+  install target) or copy `Icons/AppIcon-iOS.appiconset/*` over by hand to
+  refresh it from new master artwork, then `xcodegen generate`.
 * **Windows** — use `Icons/windows/HighRise.ico` as the executable/installer
   icon (e.g. in your `.rc` file or packaging config for the Windows build).
 

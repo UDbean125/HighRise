@@ -115,6 +115,18 @@ same template syntax, filters, and send-blocking rules. Draft-first by
 default, `-DryRun` to preview without touching Outlook. Setup, examples, and
 troubleshooting live in [`Windows/README.md`](Windows/README.md).
 
+## Using it on iOS
+
+`HighRiseMobile` is a separate iOS/iPadOS app target (`xcodebuild -scheme
+HighRiseMobile`) sharing the macOS app's Foundation-only import/merge core
+(CSV parsing, cleanup, `{{Field}}` templating). It's a smaller app by
+necessity: iOS has no AppleScript/Apple Events, so there's no way to drive
+Mail or Outlook unattended the way the macOS app does. Instead it hands each
+ready recipient to `MFMailComposeViewController` — the user reviews and taps
+Send themselves, one recipient at a time — so there's no batch/background
+send or throttling on iOS. See `HighRiseMobile/HighRiseMobileApp.swift` for
+the flow (import → template → review → send queue).
+
 ## App icons
 
 `Icons/make-icons.sh` turns master artwork into app icons for macOS, iOS/iPadOS,
@@ -183,11 +195,23 @@ Services/
   HighRiseCoordinator.swift  ObservableObject orchestrating the whole flow
 Views/
   ContentView / TemplateEditorView / ContactsImportView / ReviewView / SendView
+
+HighRiseMobile/               iOS/iPadOS target — see "Using it on iOS" above
+  HighRiseMobileApp.swift     Entry point
+  Coordinator/                MobileCoordinator (import/template/review state) + SendQueue
+  Mail/MailComposeView.swift  MFMailComposeViewController wrapper (the iOS send mechanism)
+  Views/                      ImportView / TemplateEditorView / ReviewQueueView / SendSessionView
+  (reuses Contact, EmailTemplate, RecipientTable, CSVParser, EmailValidator,
+   TemplateMergeEngine, MergeValueFormatter, ImportPipeline, ImportCleaner,
+   DuplicateDetector, MarkdownToHTML, FieldSynonyms, TemplateVariant from
+   above — each file is compiled into both the HighRise and HighRiseMobile
+   targets per `project.yml`, not duplicated)
 ```
 
 The I/O-free core (parsing, merging, escaping, validation) is fully unit-tested
 in `HighRiseTests` — including the AppleScript escaping that is this app's
-security boundary.
+security boundary. `HighRiseMobileTests` covers the iOS send queue's state
+machine (`SendQueue`).
 
 ## Known limitations / roadmap
 
