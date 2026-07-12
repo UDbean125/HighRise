@@ -156,6 +156,26 @@ and `--options=runtime`, then `xcrun notarytool submit … --wait` and
 > address-book import, **Contacts**) consent prompts — notarization doesn't
 > remove those, by design.
 
+### iOS (`HighRiseMobile` → TestFlight)
+
+The same workflow's `release-ios` job builds `HighRiseMobile`, signs it for
+App Store distribution, and uploads straight to TestFlight via
+`xcodebuild -exportArchive` with `destination: upload` (Apple-native, no
+`altool`/fastlane). Same triggers as above (tag push or manual run).
+
+It needs everything the macOS job needs (`DEVELOPMENT_TEAM` and the
+`AC_API_*` App Store Connect API key) plus iOS-specific secrets:
+`IOS_DISTRIBUTION_CERTIFICATE_BASE64` + `IOS_P12_PASSWORD` (an **Apple
+Distribution** cert — not the Developer ID one used for macOS) and
+`IOS_PROVISIONING_PROFILE_BASE64` (an App Store profile for
+`com.bryansnotes.highrise.mobile`). Until those are set, the job detects
+they're missing, logs a notice, and skips itself — it won't fail the
+workflow or block the macOS release. See the secrets block at the top of
+`.github/workflows/release.yml` for the full one-time App Store Connect
+setup (registering the bundle ID, creating the app record, and generating
+the certificate/profile — none of which can be done without a Mac and an
+Apple Developer account).
+
 ## Permissions & sandboxing
 
 HighRise runs **unsandboxed** and is meant for direct distribution

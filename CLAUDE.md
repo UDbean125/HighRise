@@ -68,6 +68,19 @@ See "Using it on iOS" in `README.md` for the user-facing summary and
 the `Test iOS app` step in `ci.yml`, picking whatever simulator destination
 the runner reports rather than hardcoding a device name.
 
+**Distribution**: `release.yml`'s `release-ios` job builds + uploads
+`HighRiseMobile` to TestFlight on the same tag-push/manual triggers as the
+macOS release job, via `xcodebuild -exportArchive -destination upload`
+(no altool/fastlane). It needs iOS-specific secrets (`IOS_DISTRIBUTION_CERTIFICATE_BASE64`,
+`IOS_P12_PASSWORD`, `IOS_PROVISIONING_PROFILE_BASE64`) on top of the ones the
+macOS job already needs — see the secrets block at the top of `release.yml`.
+**This requires one-time manual setup only the owner can do** (register the
+bundle ID `com.bryansnotes.highrise.mobile`, create the App Store Connect app
+record, generate an Apple Distribution cert + provisioning profile) — no
+session here has a Mac or Apple Developer account access to do this. Until
+those secrets exist, the job detects they're missing and skips itself rather
+than failing the workflow; don't treat that skip as a bug.
+
 ## Other repeatable workflows
 - **No-Mail dry run**: `./Tools/dry-run.sh [list.csv]` compiles the real
   Foundation-only core and prints the AppleScript each recipient would produce
