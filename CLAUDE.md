@@ -52,6 +52,22 @@ so it can't break CI before the artwork exists.
    `Select Xcode 26+` guard already prefers the newest 26–29 on the runner.
    Exact flip steps in `Icons/README.md`.
 
+## iOS companion (`HighRiseMobile`)
+A second XcodeGen target, `HighRiseMobile` (platform iOS, scheme
+`HighRiseMobile`), added because AppleScript/Apple Events — how the macOS app
+drives Mail/Outlook — don't exist on iOS. It reuses the shared Foundation-only
+import/merge files (`Contact`, `EmailTemplate`, `RecipientTable`, `CSVParser`,
+`EmailValidator`, `TemplateMergeEngine`, `MergeValueFormatter`,
+`ImportPipeline`, `ImportCleaner`, `DuplicateDetector`, `MarkdownToHTML`,
+`FieldSynonyms`, `TemplateVariant` — each listed individually as a source
+under both targets in `project.yml`, not moved into a package) and hands each
+recipient to `MFMailComposeViewController` instead: the user reviews and taps
+Send themselves, one at a time, so there's no unattended batch send on iOS.
+See "Using it on iOS" in `README.md` for the user-facing summary and
+`HighRiseMobile/HighRiseMobileApp.swift` for the flow. CI builds+tests it via
+the `Test iOS app` step in `ci.yml`, picking whatever simulator destination
+the runner reports rather than hardcoding a device name.
+
 ## Other repeatable workflows
 - **No-Mail dry run**: `./Tools/dry-run.sh [list.csv]` compiles the real
   Foundation-only core and prints the AppleScript each recipient would produce

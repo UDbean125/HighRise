@@ -51,6 +51,25 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             | tee xcodebuild.log | tail -80
 
+      # The iOS companion (HighRiseMobile) has no AppleScript to drive Mail/
+      # Outlook, so it can't reuse the macOS send path — it reuses the shared
+      # Foundation-only import/merge core and hands off to
+      # MFMailComposeViewController instead. Picks whatever iOS Simulator
+      # destination the runner's Xcode reports, so it doesn't hardcode a
+      # device name that drifts as runner images update.
+      - name: Test iOS app
+        run: |
+          set -o pipefail
+          DEST=$(xcodebuild -showdestinations -scheme HighRiseMobile 2>/dev/null \
+            | grep -m1 'platform:iOS Simulator' \
+            | sed -E 's/.*id:([^,]+),.*/\1/')
+          echo "Using simulator id: $DEST"
+          xcodebuild test \
+            -scheme HighRiseMobile \
+            -destination "platform=iOS Simulator,id=$DEST" \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild-ios.log | tail -80
+
   # The Windows companion (Windows/HighRise-Merge.ps1) targets Windows
   # PowerShell 5.1, which only exists on Windows — so its dry run is exercised
   # here under both 5.1 and PowerShell 7. -DryRun never touches Outlook.
