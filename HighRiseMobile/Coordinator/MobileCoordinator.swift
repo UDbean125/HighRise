@@ -18,6 +18,24 @@ final class MobileCoordinator: ObservableObject {
     var sendableCount: Int { previews.filter(\.isSendable).count }
     var blockedCount: Int { previews.count - sendableCount }
 
+    /// Whether the template has any content yet — the Home dashboard's
+    /// first gate, mirroring the macOS app's "write your email first" flow.
+    var hasTemplateContent: Bool {
+        !template.subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !template.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Whether there's something worth reviewing yet (a template and at
+    /// least one imported contact).
+    var canProceedToReview: Bool { hasTemplateContent && !contacts.isEmpty }
+
+    /// Whether the current (or most recent) send queue has actually sent
+    /// anything — used to pick the Home dashboard's "next step" suggestion.
+    var hasCompletedASend: Bool {
+        guard let queue, queue.isFinished else { return false }
+        return queue.outcomes.contains { $0.isSuccess }
+    }
+
     /// Parses `data` as CSV, runs it through the same cleanup/import pipeline
     /// the Mac app uses, and refreshes the merge preview against the current
     /// template.
