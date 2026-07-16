@@ -1,11 +1,19 @@
 import SwiftUI
+import UIKit
 
 /// A small iOS-native counterpart to the macOS app's `DesignSystem.swift`.
 /// Not shared with it — that file leans on AppKit (`NSColor`, Liquid Glass
 /// availability checks) — but the same idea: one brand accent plus a couple
 /// of reusable containers so Home reads as one system.
 enum Brand {
-    static let accent = Color.blue
+    /// Same exact accent as the macOS app's `Brand.accent` (sampled from the
+    /// app icon), just expressed via `UIColor`'s dynamic provider instead of
+    /// `NSColor`'s `NSAppearance`-based one.
+    static let accent = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.44, green: 0.75, blue: 0.96, alpha: 1)   // #6FC0F4
+            : UIColor(red: 0.18, green: 0.56, blue: 0.85, alpha: 1)   // #2E8FD6
+    })
     static let accentDeep = Color(red: 0.12, green: 0.44, blue: 0.72)
     static let accentSoft = Color(red: 0.47, green: 0.75, blue: 0.94)
 

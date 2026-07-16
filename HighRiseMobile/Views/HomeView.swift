@@ -38,9 +38,11 @@ struct HomeView: View {
 
     private var greeting: some View {
         HStack(spacing: 16) {
-            Image(systemName: "building.2.crop.circle.fill")
-                .font(.system(size: 40))
-                .foregroundStyle(Brand.gradient)
+            Image("BrandMark")
+                .resizable().aspectRatio(contentMode: .fit)
+                .frame(width: 56, height: 56)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
             VStack(alignment: .leading, spacing: 2) {
                 Text(hourGreeting)
                     .font(.title.bold())
