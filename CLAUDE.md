@@ -99,13 +99,19 @@ than failing the workflow; don't treat that skip as a bug.
 
 ## Conventions
 - Branch for this work: `claude/tool-feature-benchmarking-m241ea`.
-- **App-icon CI policy (owner decision):** keep the Liquid Glass `HighRise.icon`
-  wired in even though CI's Xcode 26.3 `actool` *intermittently crashes* on it
-  (`CompileAssetCatalogVariant` failure). On such a failure, **re-run the CI
-  job** — it usually passes — and do NOT revert to the static
-  `AppIcon.appiconset` or treat it as a code bug. The owner chose the nicer icon
-  over the documented always-green static fallback. Only a failure that is *not*
-  the icon crash indicates a real problem.
+- **App-icon: static `AppIcon.appiconset`, not the Liquid Glass `.icon` (owner
+  decision, reversed 2026-07-12).** `project.yml`/`Info.plist` previously
+  pointed `ASSETCATALOG_COMPILER_APPICON_NAME`/`CFBundleIconName` at the
+  Liquid Glass `HighRise.icon` (Icon Composer). That's reverted: App Store
+  Connect's product-page icon extraction doesn't pull a marketing icon from
+  that newer format — a real Mac App Store submission built with it went
+  through review with **no icon showing on the store listing**. The static
+  `HighRise/Assets.xcassets/AppIcon.appiconset/` (real PNGs, generated from
+  `Icons/AppIcon-macOS.appiconset`) is the shipping icon again. `Icons/HighRise.icon`
+  (moved to `HighRise/HighRise.icon`) stays in the repo for a future retry once
+  Apple's App Store Connect pipeline supports extracting from `.icon` bundles —
+  don't delete it, just don't wire it back in without re-confirming that support
+  exists.
 - AppleScript string escaping (`AppleScriptBuilder.stringLiteral`) is the app's
   security boundary — keep it unit-tested.
 - Never leak a raw `{{placeholder}}` to a recipient; merge blocks unresolved rows.
