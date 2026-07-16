@@ -33,14 +33,23 @@ name: Release
 #                                        used for macOS — a different cert type)
 #   IOS_P12_PASSWORD                     password protecting that .p12
 #   IOS_PROVISIONING_PROFILE_BASE64      base64 of an App Store provisioning
-#                                        profile for com.bryansnotes.highrise.mobile
+#                                        profile for com.bryansnotes.highrise
+#                                        (same bundle ID as the macOS app —
+#                                        HighRiseMobile ships as that app's
+#                                        iOS platform under one "Universal
+#                                        Purchase" App Store Connect record,
+#                                        not a separate app/bundle ID)
 #
 #   One-time manual setup in the Apple Developer portal / App Store Connect
 #   (nothing here can do this remotely — no Mac, no Apple Developer session):
-#     1. Register the bundle ID com.bryansnotes.highrise.mobile.
-#     2. Create the app record in App Store Connect for that bundle ID.
-#     3. Create + download an App Store distribution provisioning profile for it.
-#     4. Export an "Apple Distribution" certificate as a .p12.
+#     1. In the existing "HighRise" app record in App Store Connect, add the
+#        iOS platform (General ▸ App Information ▸ "Add Platform" ▸ iOS) —
+#        this reuses com.bryansnotes.highrise, no new bundle ID to register.
+#     2. Create + download an App Store distribution provisioning profile
+#        for com.bryansnotes.highrise, iOS platform.
+#     3. Export an "Apple Distribution" certificate as a .p12 (the same one
+#        used for the macOS app's App Store variant can be reused here if
+#        it already exists — it's a per-account cert, not per-app).
 #   The AC_API_KEY_* key also needs the "App Manager" role (or higher) to
 #   upload builds — the notarization-only key above may only have "Developer",
 #   which is enough to notarize but not enough to upload to TestFlight; check
@@ -358,7 +367,7 @@ jobs:
             <key>teamID</key><string>${{ secrets.DEVELOPMENT_TEAM }}</string>
             <key>provisioningProfiles</key>
             <dict>
-              <key>com.bryansnotes.highrise.mobile</key>
+              <key>com.bryansnotes.highrise</key>
               <string>${{ steps.profile.outputs.uuid }}</string>
             </dict>
           </dict>

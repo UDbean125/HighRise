@@ -72,18 +72,26 @@ flow. CI builds+tests it via the `Test iOS app` step in `ci.yml`, picking
 whatever simulator destination
 the runner reports rather than hardcoding a device name.
 
+**Universal Purchase**: `HighRiseMobile`'s `PRODUCT_BUNDLE_IDENTIFIER` is
+deliberately `com.bryansnotes.highrise` — the *same* bundle ID as the macOS
+`HighRise` target, not its own. That's what lets both platforms ship under
+one App Store Connect app record ("HighRise") as a Universal Purchase app,
+rather than iOS needing a separate bundle ID/app record/listing.
+
 **Distribution**: `release.yml`'s `release-ios` job builds + uploads
 `HighRiseMobile` to TestFlight on the same tag-push/manual triggers as the
 macOS release job, via `xcodebuild -exportArchive -destination upload`
 (no altool/fastlane). It needs iOS-specific secrets (`IOS_DISTRIBUTION_CERTIFICATE_BASE64`,
 `IOS_P12_PASSWORD`, `IOS_PROVISIONING_PROFILE_BASE64`) on top of the ones the
 macOS job already needs — see the secrets block at the top of `release.yml`.
-**This requires one-time manual setup only the owner can do** (register the
-bundle ID `com.bryansnotes.highrise.mobile`, create the App Store Connect app
-record, generate an Apple Distribution cert + provisioning profile) — no
-session here has a Mac or Apple Developer account access to do this. Until
-those secrets exist, the job detects they're missing and skips itself rather
-than failing the workflow; don't treat that skip as a bug.
+**This requires one-time manual setup only the owner can do** (add the iOS
+platform to the existing "HighRise" App Store Connect app record — no new
+bundle ID or app record needed, since it reuses `com.bryansnotes.highrise` —
+generate an Apple Distribution cert + provisioning profile for that bundle
+ID/iOS platform) — no session here has a Mac or Apple Developer account
+access to do this. Until those secrets exist, the job detects they're
+missing and skips itself rather than failing the workflow; don't treat that
+skip as a bug.
 
 ## Other repeatable workflows
 - **No-Mail dry run**: `./Tools/dry-run.sh [list.csv]` compiles the real

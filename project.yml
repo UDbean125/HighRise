@@ -90,12 +90,15 @@ targets:
       - path: HighRise/Services/NextStep.swift
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.bryansnotes.highrise.mobile
-        # Deliberately NOT "HighRise" — that would collide with the macOS
-        # target's Swift module name. CFBundleDisplayName below is what the
-        # user actually sees on the Home Screen; the module stays
+        # Same bundle ID as the macOS `HighRise` target, deliberately — this
+        # is what lets both platforms live under one "Universal Purchase"
+        # App Store Connect app record instead of two separate listings.
+        # Product NAME is still NOT "HighRise" (that would collide with the
+        # macOS target's Swift module name) — CFBundleDisplayName below is
+        # what the user actually sees on the Home Screen; the module stays
         # "HighRiseMobile" to match `@testable import HighRiseMobile` in
         # HighRiseMobileTests.
+        PRODUCT_BUNDLE_IDENTIFIER: com.bryansnotes.highrise
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_FILE: HighRiseMobile/Info.plist
         GENERATE_INFOPLIST_FILE: NO
