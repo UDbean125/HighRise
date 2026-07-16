@@ -59,13 +59,17 @@ drives Mail/Outlook — don't exist on iOS. It reuses the shared Foundation-only
 import/merge files (`Contact`, `EmailTemplate`, `RecipientTable`, `CSVParser`,
 `EmailValidator`, `TemplateMergeEngine`, `MergeValueFormatter`,
 `ImportPipeline`, `ImportCleaner`, `DuplicateDetector`, `MarkdownToHTML`,
-`FieldSynonyms`, `TemplateVariant` — each listed individually as a source
-under both targets in `project.yml`, not moved into a package) and hands each
-recipient to `MFMailComposeViewController` instead: the user reviews and taps
-Send themselves, one at a time, so there's no unattended batch send on iOS.
-See "Using it on iOS" in `README.md` for the user-facing summary and
-`HighRiseMobile/HighRiseMobileApp.swift` for the flow. CI builds+tests it via
-the `Test iOS app` step in `ci.yml`, picking whatever simulator destination
+`FieldSynonyms`, `TemplateVariant`, `Greeting`, `NextStep` — each listed
+individually as a source under both targets in `project.yml`, not moved into
+a package) and hands each recipient to `MFMailComposeViewController` instead:
+the user reviews and taps Send themselves, one at a time, so there's no
+unattended batch send on iOS. `HighRiseMobile/Views/HomeView.swift` is a
+smaller version of the macOS Home dashboard (same `Greeting`/`NextStep`
+logic, no sending-from picker/scheduled-send/saved-templates/do-not-contact —
+none of those exist on iOS). See "Using it on iOS" in `README.md` for the
+user-facing summary and `HighRiseMobile/HighRiseMobileApp.swift` for the
+flow. CI builds+tests it via the `Test iOS app` step in `ci.yml`, picking
+whatever simulator destination
 the runner reports rather than hardcoding a device name.
 
 **Distribution**: `release.yml`'s `release-ios` job builds + uploads

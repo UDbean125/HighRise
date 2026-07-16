@@ -86,6 +86,8 @@ targets:
       - path: HighRise/Services/ImportCleaner.swift
       - path: HighRise/Services/ImportPipeline.swift
       - path: HighRise/Services/MarkdownToHTML.swift
+      - path: HighRise/Services/Greeting.swift
+      - path: HighRise/Services/NextStep.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.bryansnotes.highrise.mobile

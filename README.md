@@ -127,6 +127,14 @@ Send themselves, one recipient at a time — so there's no batch/background
 send or throttling on iOS. See `HighRiseMobile/HighRiseMobileApp.swift` for
 the flow (import → template → review → send queue).
 
+Opening the app lands on a Home dashboard — a smaller version of the macOS
+app's (`HomeView.swift` on both sides share the same `Greeting`/`NextStep`
+logic): a "what to do next" card plus quick jumps to Compose/Import/Review/
+Send, so the four screens aren't a strict forced order. It skips what the
+macOS dashboard has that iOS doesn't: a sending-from account picker (iOS
+always sends through whatever Mail account is already on the device),
+scheduled-send status, saved-template history, and a do-not-contact count.
+
 ## App icons
 
 `Icons/make-icons.sh` turns master artwork into app icons for macOS, iOS/iPadOS,
@@ -220,12 +228,12 @@ HighRiseMobile/               iOS/iPadOS target — see "Using it on iOS" above
   HighRiseMobileApp.swift     Entry point
   Coordinator/                MobileCoordinator (import/template/review state) + SendQueue
   Mail/MailComposeView.swift  MFMailComposeViewController wrapper (the iOS send mechanism)
-  Views/                      ImportView / TemplateEditorView / ReviewQueueView / SendSessionView
+  Views/                      HomeView / ImportView / TemplateEditorView / ReviewQueueView / SendSessionView
   (reuses Contact, EmailTemplate, RecipientTable, CSVParser, EmailValidator,
    TemplateMergeEngine, MergeValueFormatter, ImportPipeline, ImportCleaner,
-   DuplicateDetector, MarkdownToHTML, FieldSynonyms, TemplateVariant from
-   above — each file is compiled into both the HighRise and HighRiseMobile
-   targets per `project.yml`, not duplicated)
+   DuplicateDetector, MarkdownToHTML, FieldSynonyms, TemplateVariant, Greeting,
+   NextStep from above — each file is compiled into both the HighRise and
+   HighRiseMobile targets per `project.yml`, not duplicated)
 ```
 
 The I/O-free core (parsing, merging, escaping, validation) is fully unit-tested

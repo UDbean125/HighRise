@@ -53,7 +53,7 @@ struct ImportView: View {
             }
         }
         .padding(.bottom)
-        .navigationTitle("HighRise")
+        .navigationTitle("Import")
         .fileImporter(
             isPresented: $showingImporter,
             allowedContentTypes: [.commaSeparatedText, .plainText]
