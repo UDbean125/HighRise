@@ -171,18 +171,24 @@ App Store distribution, and uploads straight to TestFlight via
 `xcodebuild -exportArchive` with `destination: upload` (Apple-native, no
 `altool`/fastlane). Same triggers as above (tag push or manual run).
 
+`HighRiseMobile` deliberately shares the macOS app's bundle ID
+(`com.bryansnotes.highrise`) rather than having its own — that's what lets
+both platforms live under one **Universal Purchase** App Store Connect app
+record ("HighRise") instead of two separate listings.
+
 It needs everything the macOS job needs (`DEVELOPMENT_TEAM` and the
 `AC_API_*` App Store Connect API key) plus iOS-specific secrets:
 `IOS_DISTRIBUTION_CERTIFICATE_BASE64` + `IOS_P12_PASSWORD` (an **Apple
-Distribution** cert — not the Developer ID one used for macOS) and
-`IOS_PROVISIONING_PROFILE_BASE64` (an App Store profile for
-`com.bryansnotes.highrise.mobile`). Until those are set, the job detects
-they're missing, logs a notice, and skips itself — it won't fail the
-workflow or block the macOS release. See the secrets block at the top of
-`.github/workflows/release.yml` for the full one-time App Store Connect
-setup (registering the bundle ID, creating the app record, and generating
-the certificate/profile — none of which can be done without a Mac and an
-Apple Developer account).
+Distribution** cert — not the Developer ID one used for macOS; can be the
+same cert as the macOS App Store variant's, since it's a per-account cert,
+not per-app) and `IOS_PROVISIONING_PROFILE_BASE64` (an App Store profile
+for `com.bryansnotes.highrise`, iOS platform). Until those are set, the job
+detects they're missing, logs a notice, and skips itself — it won't fail
+the workflow or block the macOS release. See the secrets block at the top
+of `.github/workflows/release.yml` for the full one-time App Store Connect
+setup (adding the iOS platform to the existing app record — no new bundle
+ID or app record needed — and generating the certificate/profile — none of
+which can be done without a Mac and an Apple Developer account).
 
 ## Permissions & sandboxing
 
