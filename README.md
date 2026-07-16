@@ -193,13 +193,16 @@ which can be done without a Mac and an Apple Developer account).
 ## Permissions & sandboxing
 
 HighRise runs **unsandboxed** and is meant for direct distribution
-(Developer ID + notarization), not the Mac App Store, because two core features
-require capabilities the App Sandbox forbids:
+(Developer ID + notarization), not the Mac App Store, because one core feature
+requires a capability the App Sandbox forbids:
 
 - **Automation** — driving Mail/Outlook via Apple Events. macOS will prompt for
   permission the first time (System Settings ▸ Privacy & Security ▸ Automation).
-- **Office file import** — `.xlsx`/`.docx` are zip archives read via
-  `/usr/bin/unzip`, which a sandboxed app can't spawn.
+
+(Office file import — `.xlsx`/`.docx` — used to also require this, via
+spawning `/usr/bin/unzip`; `ZipEntryReader.swift` now reads the zip format
+directly with no subprocess, so it works fine sandboxed. See
+`MAS_VARIANT_PLAN.md` for the plan to actually ship a sandboxed variant.)
 
 Reading your address book triggers the standard Contacts permission prompt.
 
