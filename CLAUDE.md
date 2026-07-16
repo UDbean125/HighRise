@@ -100,6 +100,11 @@ skip as a bug.
 - **Release / notarization**: `.github/workflows/release.yml` (tag `v*` or manual)
   signs with Developer ID, notarizes via `notarytool`, staples, publishes the zip.
   Required secrets are documented in the workflow header and README.
+- **Sandboxed Mac App Store variant (in progress)**: see `MAS_VARIANT_PLAN.md`
+  for the full plan and status. Same `HighRise` target, an additional build
+  configuration/entitlements/scheme rather than a second target. The
+  in-process ZIP reader (`ZipEntryReader.swift`) is done and already benefits
+  the Developer ID build too; the Mail-automation-under-sandbox spike is next.
 - **Windows companion**: `Windows/HighRise-Merge.ps1` re-implements the CSV →
   `{{merge}}` → draft/send pipeline against classic Outlook via COM (docs in
   `Windows/README.md`). It mirrors `TemplateMergeEngine`/`MergeValueFormatter`/
