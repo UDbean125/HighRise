@@ -316,11 +316,13 @@ struct ContactsImportView: View {
             } label: {
                 Label("Apple Contacts", systemImage: "person.crop.circle")
             }
+#if !MAS_BUILD
             Button {
                 Task { await coordinator.importFromOutlookContacts() }
             } label: {
                 Label("Outlook Contacts", systemImage: "person.crop.circle.badge.questionmark")
             }
+#endif
             if !coordinator.contacts.isEmpty {
                 Spacer()
                 Text("\(coordinator.contacts.count) loaded")

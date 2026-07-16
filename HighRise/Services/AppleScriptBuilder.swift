@@ -66,7 +66,9 @@ enum AppleScriptBuilder {
                        mode: SendMode) -> String {
         switch client {
         case .appleMail: return appleMailScript(message, mode: mode)
+        #if !MAS_BUILD
         case .outlook:   return outlookScript(message, mode: mode)
+#endif
         }
     }
 

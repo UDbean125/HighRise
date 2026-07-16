@@ -49,7 +49,9 @@ struct SendView: View {
     private var confirmAccount: String {
         switch coordinator.selectedClient {
         case .appleMail: return coordinator.senderIdentity
+#if !MAS_BUILD
         case .outlook:   return "Outlook's default account"
+#endif
         }
     }
 

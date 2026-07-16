@@ -119,8 +119,10 @@ enum PreSendReport {
             return input.senderIdentity.isEmpty
                 ? "Apple Mail — default account"
                 : "Apple Mail — \(input.senderIdentity)"
+#if !MAS_BUILD
         case .outlook:
             return "Microsoft Outlook — default account"
+#endif
         }
     }
 }
