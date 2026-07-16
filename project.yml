@@ -48,7 +48,13 @@ targets:
           - "$(inherited)"
           - "@executable_path/../Frameworks"
 
-
+  # Sandboxed Mac App Store variant — same sources as `HighRise`, differing
+  # only in entitlements (app-sandbox on, Mail scripting-targets instead of
+  # Apple Events automation) and the MAS_BUILD flag, which gates Outlook out
+  # entirely (no sandboxed automation route exists for it). See
+  # MAS_VARIANT_PLAN.md. Known open risk: whether Mail's `com.apple.mail.compose`
+  # scripting-target access group actually covers *sending*, not just
+  # drafting, under the sandbox — unverified until built and tested on a Mac.
   HighRise-MAS:
     type: application
     platform: macOS
@@ -57,13 +63,18 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.bryansnotes.highrise
-        PRODUCT_NAME: HighRise
+        # Deliberately NOT "HighRise" — that would collide with the regular
+        # `HighRise` target's Swift module name, since both compile the same
+        # `HighRise` source folder. CFBundleDisplayName in Info.plist is
+        # hardcoded to "HighRise" already, so the user-visible name is
+        # unaffected by this.
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_FILE: HighRise/Info.plist
         CODE_SIGN_ENTITLEMENTS: HighRise/HighRise-MAS.entitlements
         GENERATE_INFOPLIST_FILE: NO
         ENABLE_HARDENED_RUNTIME: YES
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: MAS_BUILD
+
   HighRiseTests:
     type: bundle.unit-test
     platform: macOS
