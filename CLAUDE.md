@@ -100,11 +100,17 @@ skip as a bug.
 - **Release / notarization**: `.github/workflows/release.yml` (tag `v*` or manual)
   signs with Developer ID, notarizes via `notarytool`, staples, publishes the zip.
   Required secrets are documented in the workflow header and README.
-- **Sandboxed Mac App Store variant (in progress)**: see `MAS_VARIANT_PLAN.md`
-  for the full plan and status. Same `HighRise` target, an additional build
-  configuration/entitlements/scheme rather than a second target. The
-  in-process ZIP reader (`ZipEntryReader.swift`) is done and already benefits
-  the Developer ID build too; the Mail-automation-under-sandbox spike is next.
+- **Sandboxed Mac App Store variant**: see `MAS_VARIANT_PLAN.md` for the full
+  plan and status. Implemented as a second XcodeGen target, `HighRise-MAS`
+  (same `HighRise` sources; sandbox entitlements in
+  `HighRise/HighRise-MAS.entitlements`; `MAS_BUILD` gates Outlook out; no
+  `PRODUCT_NAME` set — it would collide with the main target's Swift module
+  name). The in-process ZIP reader is done and benefits the Developer ID
+  build too; the one open item is the Mail-automation-under-sandbox spike
+  (send vs. draft-only), testable only on a real Mac. **Archive the
+  `HighRise-MAS` scheme for Mac App Store uploads** — the plain `HighRise`
+  scheme is the unsandboxed Developer ID build and fails App Store
+  validation by design.
 - **Windows companion**: `Windows/HighRise-Merge.ps1` re-implements the CSV →
   `{{merge}}` → draft/send pipeline against classic Outlook via COM (docs in
   `Windows/README.md`). It mirrors `TemplateMergeEngine`/`MergeValueFormatter`/
@@ -115,7 +121,16 @@ skip as a bug.
   no Outlook needed); CI's `windows-dry-run` job runs it under real 5.1 + 7.
 
 ## Conventions
-- Branch for this work: `claude/tool-feature-benchmarking-m241ea`.
+- Branch for this work: `claude/ios-app-feasibility-o929df`.
+- **Work ONLY in the primary clone (`~/HighRise` on the Mac mini).** The copy
+  at `/Volumes/Satechi/HenSolutions/Apps/HighRise` (external drive) is a stale
+  July-2026 snapshot used by an earlier, now-archived agent. On 2026-07-17 a
+  force-push of `main` from that lineage wiped PRs #48–#57 (restored the same
+  day by a history-reuniting merge) and briefly changed the app's bundle ID to
+  `com.hensolutions.HighRise-G2`. Never build from, commit in, or push from
+  that folder; never force-push `main`; and the only shipping bundle ID is
+  `com.bryansnotes.highrise` (shared across macOS + iOS for Universal
+  Purchase).
 - **App-icon: static `AppIcon.appiconset`, not the Liquid Glass `.icon` (owner
   decision, reversed 2026-07-12).** `project.yml`/`Info.plist` previously
   pointed `ASSETCATALOG_COMPILER_APPICON_NAME`/`CFBundleIconName` at the
