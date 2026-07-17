@@ -25,6 +25,39 @@ name: Release
 #   AC_API_KEY_BASE64         base64 of the AuthKey_XXXXXX.p8 file
 #   AC_API_KEY_ID             the key's Key ID
 #   AC_API_ISSUER_ID          the App Store Connect issuer UUID
+#
+# iOS (HighRiseMobile -> TestFlight), on top of DEVELOPMENT_TEAM and the three
+# AC_API_* secrets above (reused — but see the role note below):
+#   IOS_DISTRIBUTION_CERTIFICATE_BASE64  base64 of an "Apple Distribution" .p12
+#                                        (NOT the Developer ID Application cert
+#                                        used for macOS — a different cert type)
+#   IOS_P12_PASSWORD                     password protecting that .p12
+#   IOS_PROVISIONING_PROFILE_BASE64      base64 of an App Store provisioning
+#                                        profile for com.bryansnotes.highrise
+#                                        (same bundle ID as the macOS app —
+#                                        HighRiseMobile ships as that app's
+#                                        iOS platform under one "Universal
+#                                        Purchase" App Store Connect record,
+#                                        not a separate app/bundle ID)
+#
+#   One-time manual setup in the Apple Developer portal / App Store Connect
+#   (nothing here can do this remotely — no Mac, no Apple Developer session):
+#     1. In the existing "HighRise" app record in App Store Connect, add the
+#        iOS platform (General ▸ App Information ▸ "Add Platform" ▸ iOS) —
+#        this reuses com.bryansnotes.highrise, no new bundle ID to register.
+#     2. Create + download an App Store distribution provisioning profile
+#        for com.bryansnotes.highrise, iOS platform.
+#     3. Export an "Apple Distribution" certificate as a .p12 (the same one
+#        used for the macOS app's App Store variant can be reused here if
+#        it already exists — it's a per-account cert, not per-app).
+#   The AC_API_KEY_* key also needs the "App Manager" role (or higher) to
+#   upload builds — the notarization-only key above may only have "Developer",
+#   which is enough to notarize but not enough to upload to TestFlight; check
+#   its role in App Store Connect ▸ Users and Access ▸ Integrations.
+#
+#   Until these are set, the `release-ios` job below detects the missing
+#   secrets, logs a notice, and skips itself — it does not fail the workflow
+#   or block the macOS release job.
 # ---------------------------------------------------------------------------
 
 on:
@@ -196,3 +229,178 @@ jobs:
           gh release create "$GITHUB_REF_NAME" "${{ steps.package.outputs.zip }}" \
             --title "$GITHUB_REF_NAME" \
             --generate-notes
+
+  # Distribution counterpart for HighRiseMobile: builds a signed .ipa and
+  # uploads it straight to TestFlight via `xcodebuild -exportArchive
+  # -destination upload` (the Apple-native path — no altool, no fastlane,
+  # matching this repo's no-third-party-tooling stance). Independent of the
+  # macOS `release` job above; a failure/skip here doesn't affect it.
+  release-ios:
+    name: Build & upload HighRiseMobile to TestFlight
+    runs-on: macos-latest
+    concurrency:
+      group: release-ios-${{ github.ref }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      # See the secrets block at the top of this file. Skips (doesn't fail)
+      # so a release tag still succeeds for macOS before iOS distribution is
+      # set up.
+      - name: Check iOS distribution secrets are configured
+        id: gate
+        env:
+          CERT: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
+          PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          if [ -z "$CERT" ] || [ -z "$PROFILE" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::iOS distribution secrets aren't set yet — skipping the TestFlight upload this run. See the secrets block at the top of .github/workflows/release.yml for the one-time setup."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Select Xcode 26+ if available
+        if: steps.gate.outputs.configured == 'true'
+        run: |
+          XC=$(ls -d /Applications/Xcode_2[6-9]*.app 2>/dev/null | sort -V | tail -1 || true)
+          if [ -n "$XC" ]; then
+            echo "Selecting $XC"
+            sudo xcode-select -s "$XC/Contents/Developer"
+          else
+            echo "Xcode 26+ not on this runner; using default."
+          fi
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        if: steps.gate.outputs.configured == 'true'
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        if: steps.gate.outputs.configured == 'true'
+        run: xcodegen generate
+
+      # Derives a marketing version from the tag (v1.2.0 -> 1.2.0), same as
+      # the macOS job — keeps both targets' version numbers in lockstep on a
+      # tagged release. Falls back to project.yml's value on manual runs.
+      - name: Resolve version
+        if: steps.gate.outputs.configured == 'true'
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "marketing=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "marketing=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Import Apple Distribution certificate
+        if: steps.gate.outputs.configured == 'true'
+        env:
+          IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
+          IOS_P12_PASSWORD: ${{ secrets.IOS_P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          CERT_PATH="$RUNNER_TEMP/ios_certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/ios-signing.keychain-db"
+
+          echo "$IOS_DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode -o "$CERT_PATH"
+
+          # Isolated, short-lived keychain — same reasoning as the macOS job.
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security import "$CERT_PATH" -P "$IOS_P12_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
+
+      - name: Install provisioning profile
+        if: steps.gate.outputs.configured == 'true'
+        id: profile
+        env:
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+          PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILE_DIR"
+          PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
+          echo "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode -o "$PROFILE_PATH"
+          UUID=$(security cms -D -i "$PROFILE_PATH" | plutil -extract UUID xml1 -o - - | sed -n 's/.*<string>\(.*\)<\/string>.*/\1/p')
+          cp "$PROFILE_PATH" "$PROFILE_DIR/$UUID.mobileprovision"
+          echo "uuid=$UUID" >> "$GITHUB_OUTPUT"
+
+      - name: Archive (Release, App Store distribution)
+        if: steps.gate.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          VERSION_FLAG=()
+          if [[ -n "${{ steps.version.outputs.marketing }}" ]]; then
+            VERSION_FLAG=(MARKETING_VERSION="${{ steps.version.outputs.marketing }}")
+          fi
+          xcodebuild archive \
+            -scheme HighRiseMobile \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/HighRiseMobile.xcarchive" \
+            DEVELOPMENT_TEAM="${{ secrets.DEVELOPMENT_TEAM }}" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="${{ steps.profile.outputs.uuid }}" \
+            "${VERSION_FLAG[@]}"
+
+      - name: Write ExportOptions.plist
+        if: steps.gate.outputs.configured == 'true'
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptionsIOS.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>teamID</key><string>${{ secrets.DEVELOPMENT_TEAM }}</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.bryansnotes.highrise</key>
+              <string>${{ steps.profile.outputs.uuid }}</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
+
+      # `-exportArchive` with `destination: upload` in ExportOptions.plist both
+      # re-signs for App Store distribution AND uploads straight to App Store
+      # Connect in one step — the currently-supported Apple-native path (no
+      # altool, which Apple has been deprecating for app uploads for years).
+      - name: Export & upload to TestFlight
+        if: steps.gate.outputs.configured == 'true'
+        env:
+          AC_API_KEY_BASE64: ${{ secrets.AC_API_KEY_BASE64 }}
+          AC_API_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
+          AC_API_ISSUER_ID: ${{ secrets.AC_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          echo "$AC_API_KEY_BASE64" | base64 --decode -o "$KEY_PATH"
+
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/HighRiseMobile.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export-ios" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptionsIOS.plist" \
+            -authenticationKeyPath "$KEY_PATH" \
+            -authenticationKeyID "$AC_API_KEY_ID" \
+            -authenticationKeyIssuerID "$AC_API_ISSUER_ID"
+
+      - name: Upload build artifact
+        if: steps.gate.outputs.configured == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: HighRiseMobile${{ steps.version.outputs.marketing && format('-{0}', steps.version.outputs.marketing) || '' }}.ipa
+          path: ${{ runner.temp }}/export-ios/*.ipa
+          if-no-files-found: error

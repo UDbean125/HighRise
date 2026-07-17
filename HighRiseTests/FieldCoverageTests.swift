@@ -57,6 +57,22 @@ struct FieldCoverageTests {
         #expect(FieldCoverage.line(FieldCoverage.assess(referenced: [], requiring: [], headers: [])) == "No merge fields yet")
     }
 
+    @Test("A synonym column (Account Name) backs the Company field")
+    func synonymCountsAsMatched() {
+        let report = FieldCoverage.assess(
+            referenced: ["Company"], requiring: ["Company"], headers: ["Account Name"])
+        #expect(report.matched.map(\.name) == ["Company"])
+        #expect(report.missing.isEmpty)
+    }
+
+    @Test("A near-miss header (Company Status) is NOT mistaken for the synonym")
+    func nearMissHeaderDoesNotFalselyMatch() {
+        let report = FieldCoverage.assess(
+            referenced: ["Company"], requiring: ["Company"], headers: ["Company Status"])
+        #expect(report.matched.isEmpty)
+        #expect(report.missing.map(\.name) == ["Company"])
+    }
+
     @Test("Drives from a real template through referencedFields/fieldsRequiringData")
     func fromTemplate() {
         // Subject uses Company (required); body uses First Name with a fallback.

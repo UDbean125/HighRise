@@ -21,6 +21,9 @@ enum OutlookContactsImporter {
     }
 
     static func fetchTable(runner: AppleScriptRunning? = nil) throws -> RecipientTable {
+#if MAS_BUILD
+        throw OutlookError.notInstalled
+#else
         guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: MailClient.outlook.bundleIdentifier) != nil else {
             throw OutlookError.notInstalled
         }
@@ -33,6 +36,7 @@ enum OutlookContactsImporter {
             throw OutlookError.scriptFailed(error.localizedDescription)
         }
         return parse(output)
+#endif
     }
 
     /// Each line is `first \t last \t company \t email`. Combines the name parts

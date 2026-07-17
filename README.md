@@ -23,6 +23,15 @@ Built to the Bryan's Notes stack rules: Swift + SwiftUI, Apple SDK only,
    - **Outlook** contacts (via automation)
    - (Apple **Numbers** files can't be read directly — export to CSV first; the
      app tells you so.)
+
+   Messy exports are **auto-tidied on import**: stray/invisible whitespace,
+   spreadsheet junk (`#N/A`, `NULL`, `-`), repeated header rows, and mangled
+   addresses (`mailto:`, `Name <addr@x.com>`, stray punctuation) are repaired
+   mechanically — every fix disclosed on the import screen and undoable in one
+   click ("Show Original Data"). Riskier repairs — misspelled mail domains
+   (`gmial.com`), ALL-CAPS names/companies, `Last, First` name order — are
+   *suggested* with counts and examples, applied only when you click. Try it:
+   `Examples/messy-recipients.csv`.
 3. **Review** every personalized message. Recipients with missing data or an
    invalid address are flagged and excluded automatically.
 4. **Send** — *draft-first by default*: each message is created in your client's
@@ -106,6 +115,26 @@ same template syntax, filters, and send-blocking rules. Draft-first by
 default, `-DryRun` to preview without touching Outlook. Setup, examples, and
 troubleshooting live in [`Windows/README.md`](Windows/README.md).
 
+## Using it on iOS
+
+`HighRiseMobile` is a separate iOS/iPadOS app target (`xcodebuild -scheme
+HighRiseMobile`) sharing the macOS app's Foundation-only import/merge core
+(CSV parsing, cleanup, `{{Field}}` templating). It's a smaller app by
+necessity: iOS has no AppleScript/Apple Events, so there's no way to drive
+Mail or Outlook unattended the way the macOS app does. Instead it hands each
+ready recipient to `MFMailComposeViewController` — the user reviews and taps
+Send themselves, one recipient at a time — so there's no batch/background
+send or throttling on iOS. See `HighRiseMobile/HighRiseMobileApp.swift` for
+the flow (import → template → review → send queue).
+
+Opening the app lands on a Home dashboard — a smaller version of the macOS
+app's (`HomeView.swift` on both sides share the same `Greeting`/`NextStep`
+logic): a "what to do next" card plus quick jumps to Compose/Import/Review/
+Send, so the four screens aren't a strict forced order. It skips what the
+macOS dashboard has that iOS doesn't: a sending-from account picker (iOS
+always sends through whatever Mail account is already on the device),
+scheduled-send status, saved-template history, and a do-not-contact count.
+
 ## App icons
 
 `Icons/make-icons.sh` turns master artwork into app icons for macOS, iOS/iPadOS,
@@ -135,16 +164,45 @@ and `--options=runtime`, then `xcrun notarytool submit … --wait` and
 > address-book import, **Contacts**) consent prompts — notarization doesn't
 > remove those, by design.
 
+### iOS (`HighRiseMobile` → TestFlight)
+
+The same workflow's `release-ios` job builds `HighRiseMobile`, signs it for
+App Store distribution, and uploads straight to TestFlight via
+`xcodebuild -exportArchive` with `destination: upload` (Apple-native, no
+`altool`/fastlane). Same triggers as above (tag push or manual run).
+
+`HighRiseMobile` deliberately shares the macOS app's bundle ID
+(`com.bryansnotes.highrise`) rather than having its own — that's what lets
+both platforms live under one **Universal Purchase** App Store Connect app
+record ("HighRise") instead of two separate listings.
+
+It needs everything the macOS job needs (`DEVELOPMENT_TEAM` and the
+`AC_API_*` App Store Connect API key) plus iOS-specific secrets:
+`IOS_DISTRIBUTION_CERTIFICATE_BASE64` + `IOS_P12_PASSWORD` (an **Apple
+Distribution** cert — not the Developer ID one used for macOS; can be the
+same cert as the macOS App Store variant's, since it's a per-account cert,
+not per-app) and `IOS_PROVISIONING_PROFILE_BASE64` (an App Store profile
+for `com.bryansnotes.highrise`, iOS platform). Until those are set, the job
+detects they're missing, logs a notice, and skips itself — it won't fail
+the workflow or block the macOS release. See the secrets block at the top
+of `.github/workflows/release.yml` for the full one-time App Store Connect
+setup (adding the iOS platform to the existing app record — no new bundle
+ID or app record needed — and generating the certificate/profile — none of
+which can be done without a Mac and an Apple Developer account).
+
 ## Permissions & sandboxing
 
 HighRise runs **unsandboxed** and is meant for direct distribution
-(Developer ID + notarization), not the Mac App Store, because two core features
-require capabilities the App Sandbox forbids:
+(Developer ID + notarization), not the Mac App Store, because one core feature
+requires a capability the App Sandbox forbids:
 
 - **Automation** — driving Mail/Outlook via Apple Events. macOS will prompt for
   permission the first time (System Settings ▸ Privacy & Security ▸ Automation).
-- **Office file import** — `.xlsx`/`.docx` are zip archives read via
-  `/usr/bin/unzip`, which a sandboxed app can't spawn.
+
+(Office file import — `.xlsx`/`.docx` — used to also require this, via
+spawning `/usr/bin/unzip`; `ZipEntryReader.swift` now reads the zip format
+directly with no subprocess, so it works fine sandboxed. See
+`MAS_VARIANT_PLAN.md` for the plan to actually ship a sandboxed variant.)
 
 Reading your address book triggers the standard Contacts permission prompt.
 
@@ -167,17 +225,30 @@ Services/
   OutlookContactsImporter.swift  Outlook contacts via AppleScript
   ZipEntryReader.swift     Extracts one entry from a zip via /usr/bin/unzip
   EmailValidator.swift     Pragmatic address validation
+  ImportCleaner.swift      Auto-fixes + suggested repairs for messy imports
   TemplateMergeEngine.swift  Pure {{Field}} substitution + HTML escaping
   AppleScriptBuilder.swift   Builds escaped AppleScript per client/mode
   MailSender.swift         Runs AppleScript (NSAppleScript), per-message delivery
   HighRiseCoordinator.swift  ObservableObject orchestrating the whole flow
 Views/
   ContentView / TemplateEditorView / ContactsImportView / ReviewView / SendView
+
+HighRiseMobile/               iOS/iPadOS target — see "Using it on iOS" above
+  HighRiseMobileApp.swift     Entry point
+  Coordinator/                MobileCoordinator (import/template/review state) + SendQueue
+  Mail/MailComposeView.swift  MFMailComposeViewController wrapper (the iOS send mechanism)
+  Views/                      HomeView / ImportView / TemplateEditorView / ReviewQueueView / SendSessionView
+  (reuses Contact, EmailTemplate, RecipientTable, CSVParser, EmailValidator,
+   TemplateMergeEngine, MergeValueFormatter, ImportPipeline, ImportCleaner,
+   DuplicateDetector, MarkdownToHTML, FieldSynonyms, TemplateVariant, Greeting,
+   NextStep from above — each file is compiled into both the HighRise and
+   HighRiseMobile targets per `project.yml`, not duplicated)
 ```
 
 The I/O-free core (parsing, merging, escaping, validation) is fully unit-tested
 in `HighRiseTests` — including the AppleScript escaping that is this app's
-security boundary.
+security boundary. `HighRiseMobileTests` covers the iOS send queue's state
+machine (`SendQueue`).
 
 ## Known limitations / roadmap
 

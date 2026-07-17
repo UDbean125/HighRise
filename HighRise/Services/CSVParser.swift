@@ -162,27 +162,81 @@ enum CSVParser {
         return (contacts, emailKey)
     }
 
-    /// Picks the most likely email column: first a header that mentions "email",
-    /// otherwise the column whose values most often look like addresses.
+    /// A row dropped from `contacts(from:emailHeader:)` because its email
+    /// column was blank — named so the UI can show *which* rows were skipped,
+    /// not just a bare count.
+    struct SkippedRow: Identifiable, Equatable {
+        let id = UUID()
+        /// 1-based, counting the header as row 1 — matches how the row would
+        /// be numbered if opened in Excel/Numbers.
+        let rowNumber: Int
+        /// The first couple of non-blank values in the row, so the row is
+        /// recognizable without re-opening the source file.
+        let preview: String
+    }
+
+    /// Rows from `table` that `contacts(from:emailHeader:)` silently drops
+    /// because they have no value in the email column.
+    static func skippedRows(from table: RecipientTable, emailHeader: String? = nil) -> [SkippedRow] {
+        let chosen = emailHeader ?? detectEmailColumn(in: table)
+        guard let emailKey = chosen,
+              let emailIndex = table.headers.firstIndex(where: { $0.lowercased() == emailKey.lowercased() })
+        else {
+            return []
+        }
+
+        return table.rows.enumerated().compactMap { offset, row in
+            let email = (emailIndex < row.count ? row[emailIndex] : "")
+                .trimmingCharacters(in: .whitespaces)
+            guard email.isEmpty else { return nil }
+            let nonBlank = table.headers.enumerated().compactMap { index, header -> String? in
+                guard !header.isEmpty, index < row.count else { return nil }
+                let value = row[index].trimmingCharacters(in: .whitespaces)
+                return value.isEmpty ? nil : value
+            }
+            let preview = nonBlank.prefix(2).joined(separator: ", ")
+            return SkippedRow(rowNumber: offset + 2,
+                               preview: preview.isEmpty ? "(blank row)" : preview)
+        }
+    }
+
+    /// Picks the most likely email column: among headers that mention "email",
+    /// the one with the most valid-looking addresses (a CRM export commonly has
+    /// several — "Email", "Email (Primary Contact)", "Email - Accounts
+    /// Payable" — and the first one by name isn't necessarily the one that's
+    /// actually populated); otherwise the column whose values most often look
+    /// like addresses, regardless of header name.
     static func detectEmailColumn(in table: RecipientTable) -> String? {
-        if let named = table.headers.first(where: {
+        let named = table.headers.filter {
             let h = $0.lowercased()
             return h.contains("email") || h.contains("e-mail") || h == "mail"
-        }) {
-            return named
         }
-        var bestHeader: String?
-        var bestScore = 0
-        for (index, header) in table.headers.enumerated() where !header.isEmpty {
+        if !named.isEmpty {
+            if let best = bestScoringColumn(among: named, in: table), best.score > 0 {
+                return best.header
+            }
+            // None of the email-named columns have any valid address yet —
+            // still prefer one of them by name over an unrelated column.
+            return named.first
+        }
+        return bestScoringColumn(among: table.headers.filter { !$0.isEmpty }, in: table)?.header
+    }
+
+    /// Among `candidates`, the header whose column has the most values that
+    /// pass `EmailValidator`, or nil when `candidates` is empty.
+    private static func bestScoringColumn(among candidates: [String],
+                                          in table: RecipientTable) -> (header: String, score: Int)? {
+        var best: (header: String, score: Int)?
+        for header in candidates {
+            guard let index = table.headers.firstIndex(of: header) else { continue }
             let score = table.rows.reduce(0) { acc, row in
                 guard index < row.count else { return acc }
                 return acc + (EmailValidator.isValid(row[index]) ? 1 : 0)
             }
-            if score > bestScore {
-                bestScore = score
-                bestHeader = header
+            if best == nil || score > best!.score {
+                best = (header, score)
             }
         }
-        return bestHeader
+        return best
     }
 }

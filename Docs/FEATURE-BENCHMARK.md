@@ -1,11 +1,13 @@
 # HighRise — Competitive Feature Benchmark
 
-*Compiled July 2026. Sources: official product pages, docs, and changelogs of each
-tool named below (verified against first-party sources; where a vendor page was
-unreachable, verification used domain-restricted search over the vendor's own
-site). Every recommendation in §4 was independently fact-checked ("do the named
-competitors really ship this today?") and feasibility-reviewed against the
-HighRise codebase.*
+*Compiled July 2026; expanded July 2026 (second pass) with §9–§11: the
+mass-market tier (large-install-base apps with strong public ratings), a
+dashboard-and-layout study, and a contact-import-cleaning benchmark. Sources:
+official product pages, docs, and changelogs of each tool named below (verified
+against first-party sources; where a vendor page was unreachable, verification
+used domain-restricted search over the vendor's own site). Every recommendation
+in §4 was independently fact-checked ("do the named competitors really ship
+this today?") and feasibility-reviewed against the HighRise codebase.*
 
 ---
 
@@ -279,10 +281,9 @@ belongs in P0:
    VoiceOver/localization audits.
 7. **Document the no-tracking stance** as a deliberate decision (README +
    marketing), so its absence reads as a feature, not an oversight (§7).
-8. **Benchmark follow-ups for a future pass**: Gmail's built-in multi-send
-   (the free baseline that sets user expectations), Daylite/Mailbutler
-   (Mac CRM-lite), Mail Designer 365, LibreOffice merge, and the
-   Shortcuts/AppleScript DIY path HighRise replaces.
+8. **Benchmark follow-ups for a future pass**: ~~Gmail's built-in multi-send~~
+   (now covered in §9), Daylite/Mailbutler (Mac CRM-lite), Mail Designer 365,
+   LibreOffice merge, and the Shortcuts/AppleScript DIY path HighRise replaces.
 
 ---
 
@@ -337,10 +338,149 @@ Small, pure-Swift, unit-testable wins first; spikes before promises:
 
 ---
 
+## 9. Mass-market tier — the large-install-base benchmark (July 2026)
+
+§3 profiled HighRise's direct competitors. This tier is different: the most
+*successful* apps adjacent to the category — big install bases, strong public
+ratings — studied not for feature parity (most are cloud ESPs HighRise should
+not imitate, see §7) but for the **interaction patterns that made them easy for
+millions of non-experts**. Install/rating figures are from marketplace listings
+and G2 as of mid-2026; totals that vary by source are marked ~.
+
+| Tool | Scale & rating signal | What its success teaches |
+|---|---|---|
+| **Mailchimp** (Intuit) | ~12M+ users (2.4M MAU); G2 ≈4.3–4.4, thousands of reviews; dominant SMB email share | The **campaign checklist page** (§10.2) — an email is 5 labeled rows (To / From / Subject / Send time / Content), each with an Edit button and a checkmark; Send stays disabled until all pass. So core it's an API endpoint ("Send Checklist"). Home = personalized "recommended next steps," not stats. Import = Upload → Match → Organize → Tag wizard. Contact table has a per-row **status badge** (subscribed/cleaned/pending). |
+| **Constant Contact** | ~600k SMB customers; G2 4.1 with **7,365 reviews**; "ease of use" cited in 1,000+ | Winter-2025 redesign doubled down on **personalized dashboard + "clear next steps"** and moved everything into a collapsible left rail. Contacts got pinned fields, quick inline-edit views, and a **status column** — the industry keeps converging on status-in-the-row. |
+| **Brevo** (ex-Sendinblue) | 500k+ businesses; G2 ≈4.5 | **Modular left rail** ("apps" the user can add/remove — unused modules disappear), a Mailchimp-style single setup page per campaign, advanced options collapsed under "Additional settings," and a 3-item **onboarding checklist with progress** (authenticate → import → first send) that reviewers single out. |
+| **HubSpot** (free CRM + marketing email) | 238k+ paying customers; G2 4.4 over **35k+ reviews** | The reference **contacts table**: saved views as tabs, filter chips, "Edit columns," checkbox bulk actions. Import wizard with auto-mapped columns, inline "create property"/"don't import," and a **downloadable per-row error file (code + reason)**. Pre-send **"Review reasons" exclusion accounting**: exactly how many will receive it, and an itemized list of why the rest won't — HighRise's blocked-rows concept, presented as accounting. |
+| **YAMM** | **10M+ Marketplace installs, 4.8/5 (19k+ reviews)** | **The spreadsheet IS the dashboard**: one dialog + one writeback status column added to a table users already know. Test-send is a button *inside* the send dialog. Its entire UI surface is smaller than most tools' settings screens — that is the product. |
+| **Mailmeteor** | 6M+ users, **4.9/5 (11.5k+ reviews)** | The citable step-count case study: they measured the send flow at 5 steps and **redesigned it to 3**, making templates optional for the fast path. Preview-per-recipient ("Preview emails") before send is the marquee safety feature. |
+| **GMass** | G2 **4.8/5 (~1,270 reviews)** | Inbox-as-dashboard: reports are Gmail labels; all power features live behind one expandable settings box next to Send. Maximum capability behind minimum resting UI. |
+| **Gmail multi-send** (built-in) | free baseline for a billion-user product | Mode is *loudly* signaled (compose turns purple; Send becomes "Continue"); the confirmation step offers exactly three choices — **Cancel / Send Preview (test-to-self) / Send All**. Test-send as a peer of Send, not a buried menu item. |
+| **Word/Outlook merge wizard** | bundled with Office; the incumbent pattern | Dual-mode access to one engine: a 6-step novice wizard *and* the Mailings ribbon laid out left-to-right in workflow order for experts. Record-by-record preview before commit; "Edit Recipient List" had per-row include checkboxes, dedupe and validation 20 years ago. |
+| **Direct Mail 8** (Mac) | top-rated native Mac campaign app (MAS ≈4.7) | The native-Mac reference layout: **sidebar of nouns (Messages / Addresses / Reports) + content area + inspector**. No wizard — navigation by object, campaign = message + list + send. |
+
+---
+
+## 10. Dashboard & layout patterns — making HighRise feel intuitive
+
+Cross-tool patterns from §9 (each shipped by 3+ successful products), mapped to
+HighRise's current Home → Compose → Contacts → Review → Send flow. The recurring
+theme: **the market's most-loved tools show state in the row, put verbs on the
+home screen, and make the last screen an accounting of exactly what will
+happen.**
+
+1. **Home = recommended next actions, not a menu.** (Mailchimp, Constant
+   Contact, Brevo.) HighRise's Home hub should lead with contextual verb cards:
+   "Resume your draft," "3 rows are held back — fix them," "Re-run the 2 failed
+   sends," "Import a list to preview this template for real." The four stage
+   tiles stay, but the *next step* is computed and put first (the `NextStep`
+   service already exists — promote it to the hub's primary card).
+2. **Review as a send-readiness checklist.** (Mailchimp's checklist page —
+   the single most-imitated layout in the category; Brevo's setup page;
+   HubSpot's review panel.) Recast Review's summary as labeled checklist rows —
+   Template ✓ · Recipients ✓ · Attachments ✓ · Envelope ✓ · Throttle ✓ ·
+   **42 of 50 ready** — each row jumping to its editor, with Send disabled until
+   green. `SendReadiness`/`ReviewSummary`/`PreSendReport` already compute all of
+   it; this is presentation, not new logic.
+3. **Status badge in the contact row.** (Mailchimp, Constant Contact, YAMM,
+   HubSpot.) The import preview table should carry a per-row status chip —
+   Ready / Held: missing {{Company}} / Duplicate / Suppressed / Repaired —
+   instead of the current binary valid-email icon. List health stays in the
+   rail as aggregates; the *rows* answer "which ones?".
+4. **Pre-send exclusion accounting.** (HubSpot's "Review reasons"; Word's
+   include-checkboxes; Gmail's forced Cancel/Preview/Send All.) The Send screen
+   should lead with "**42 of 50 will receive this**" plus an itemized held-back
+   list (already computed as `blockedPreviews` + `HeldReasons`) and put
+   **Send Test to Myself** visually beside Send All, Gmail-style.
+5. **Keep the user's spreadsheet recognizable.** (YAMM/Mailmeteor — 16M
+   combined installs on this one idea.) Show imported columns in their original
+   order with the status chip appended, and offer the results CSV as "your file
+   plus a Status column" (the `RunReportExporter` already writes per-recipient
+   outcomes — align its column order with the import).
+6. **Onboarding checklist with progress.** (Brevo, Mailchimp.) Extend the
+   welcome tour into a persistent, dismissible 3-item checklist on Home:
+   compose (or pick a starter) → import (or load the sample) → test-send to
+   yourself. Each item checks itself off from real state.
+7. **Progressive disclosure of send options.** (Brevo's "Additional settings,"
+   GMass's settings box, Mailmeteor's advanced options.) Throttle, provider
+   quota, scheduling, sender identity, and unsubscribe-footer settings collapse
+   behind one "Sending options" disclosure; the resting Send screen shows only
+   client, mode, and the accounting from #4.
+8. **Filter to problem rows.** (HubSpot filter chips; OpenRefine facets.) One
+   toggle on the import/review tables: "Show only rows needing attention."
+9. **Import = Upload → auto-match → review, never pre-clean-your-file.**
+   (Mailchimp, HubSpot, Attio, Pipedrive — universal.) HighRise's auto-detected
+   email/attachment columns + the §11 cleanup pipeline already implement this;
+   keep any future column-mapping UI to the same shape: auto-map, show the
+   guess, one click to override.
+10. **Loud mode distinction for live sending.** (Gmail's purple compose.) When
+    mode = Send (not Draft), tint the Send screen's header/CTA distinctly so
+    "this will really email people" is unmistakable.
+
+Priority order for the "not intuitive enough" complaint: **#1, #2, #3, #4**
+first (they re-present existing computed state — low risk, high leverage), then
+#6/#7, then the rest.
+
+---
+
+## 11. Contact-import cleaning — benchmark and what HighRise now ships
+
+Second-pass study of how successful products handle **large, badly formatted
+contact/company imports** (Mailchimp, HubSpot incl. Breeze AI, Salesforce
+Data Import Wizard + matching rules, Pipedrive, Attio, Apollo, ZeroBounce/
+NeverBounce, Excel Power Query, Google Sheets Smart Cleanup, OpenRefine,
+Google Contacts "Merge & fix"). The industry consensus is a **three-tier
+severity model**, and it is exactly the shape shipped in `ImportCleaner`:
+
+| Tier | Industry practice | HighRise (shipped) |
+|---|---|---|
+| **Auto-apply silently-safe fixes** | HubSpot lowercases emails and trims names on entry; NeverBounce strips bad syntax/duplicates pre-billing; ZeroBounce removes a stray leading period; everyone trims | Whitespace/invisible-character scrub (incl. NBSP — which Excel TRIM and Sheets "Trim whitespace" *don't* handle), spreadsheet junk tokens (`#N/A`, `NULL`, `-`) cleared to empty so rows are **held, not sent broken**, repeated header rows dropped, mechanical email repairs (`mailto:`, `Name <addr>`, wrapping quotes/brackets, stray edge punctuation, inner spaces) — each fix counted and disclosed with before→after examples |
+| **Suggest riskier fixes, one click, never automatic** | The industry's hard line: **nobody auto-corrects typo domains** — Mailchimp *removes* gmail-typo addresses outright; ZeroBounce only *suggests* (`did_you_mean`). Sheets Smart Cleanup and OpenRefine clustering are accept-per-suggestion. HubSpot Breeze proposes casing fixes incl. particle names (MacDonald, DeSantos) behind accept/reject | Misspelled mail domains (`gmial.com` → `gmail.com`, dead `.con`/`.cmo` TLDs, comma-for-dot), SHOUTING-CASE / all-lowercase names & companies with particle-aware title casing (O'Brien, McDonald, van der Berg, Ford III), and `Last, First` → `First Last` flips (with company/generational-suffix stop-words) — each with count + examples, applied per suggestion |
+| **Block what can't be fixed, with the reason** | HubSpot kills the row on `INVALID_EMAIL` but merely blanks a bad field otherwise ("field-level degradation"); Pipedrive compiles skipped rows into a reason-coded **skip file**; Mailchimp reports categorized counts | Unchanged core behavior: invalid/missing emails and unresolved `{{fields}}` hold the row back with a per-row reason (`HeldReasons`), and the results CSV exports the accounting |
+
+Where HighRise now *leads* the pack:
+
+- **`mailto:` / `Name <addr>` stripping** is documented industry *pre-verification
+  practice* but no major CRM or merge tool ships it natively — HighRise does.
+- **Particle-aware name casing** ships only in HubSpot's paid, cloud-AI Breeze
+  feature; HighRise's is a deterministic exception list, offline, unit-tested.
+- **Undo is total and instant**: "Show Original Data" restores the untouched
+  import (Mailchimp gives a 24-hour window on additions only; most tools offer
+  nothing).
+- Everything runs locally on any list size — no upload, no row quotas.
+
+Still open (candidates for a later wave, in rough value order):
+
+1. **Role-address flagging** (`info@`, `sales@`, `admin@`) — flag-only, as
+   ZeroBounce/NeverBounce do; Mailchimp's silent *removal* is the anti-pattern.
+2. **Import-stage skip/error file** — Pipedrive-style reason-coded CSV of rows
+   skipped at import (no email), complementing the existing post-run report.
+3. **Fuzzy duplicate clustering** — OpenRefine fingerprint/Salesforce-style
+   matching (suffix-normalized company compare, nickname pairs Bob≡Robert) as a
+   *suggestion* group; note Salesforce normalizes only inside the comparator and
+   never rewrites stored values — the safe pattern to copy.
+4. **Per-column profiling** — Sheets-style column stats (top values, anomalies)
+   in the health rail, powering "inconsistent value" suggestions.
+5. **Attio-style per-value review** — the modern high bar: a raw-vs-mapped diff
+   view with in-place edit before commit; heavyweight, only worth it if lists
+   regularly exceed what the suggestion cards handle.
+6. **Enrich-instead-of-clean** (Apollo/Breeze fill gaps from a vendor DB) —
+   requires a cloud lookup of recipient data: a §7 non-goal, listed here only to
+   record the decision.
+
+---
+
 *Method: 54 research/verification agents; 12 competitor tool groups profiled +
 4 cross-tool feature surveys (personalization; sending & safety; tracking &
 follow-up; attachments & data); findings gap-analyzed against the current
 codebase; all 18 recommendations fact-checked against official vendor
 documentation and feasibility-reviewed against the HighRise sources; a final
 completeness critique produced §6. Claims reflect vendor documentation as of
-July 2026.*
+July 2026. Second pass (§9–§11): two further research sweeps over (a) dashboard
+layouts, information architecture, and onboarding of the mass-market tools and
+(b) import-cleaning behavior across CRMs, ESPs, verification services, and
+spreadsheet tooling — verified against vendor help centers and marketplace
+listings as of July 2026; install/rating figures quoted from the marketplaces
+(Google Workspace Marketplace, Mac App Store) and G2 and marked ~ where sources
+disagree.*

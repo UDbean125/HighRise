@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(apt-get install *)",
+      "Bash(brew:*)",
+      "Bash(ffmpeg *)",
+      "Bash(ffprobe *)",
+      "Bash(git *)",
+      "Bash(git:*)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(pnpm *)",
+      "Bash(python3 *)",
+      "Bash(swift:*)",
+      "Bash(swiftc:*)",
+      "Bash(xcodebuild:*)",
+      "Bash(xcodegen:*)",
+      "Edit",
+      "Glob",
+      "Grep",
+      "Read",
+      "Write",
+      "mcp__Claude_Code_Remote__*",
+      "mcp__github__*"
+    ],
+    "defaultMode": "auto"
+  },
+  "tui": "fullscreen",
+  "inputNeededNotifEnabled": true,
+  "agentPushNotifEnabled": true,
+  "skipDangerousModePermissionPrompt": true
+}

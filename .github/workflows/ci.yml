@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # Pre-staged for the Icon Composer .icon (which needs Xcode 26+ to compile).
       # Guarded: selects the newest Xcode >= 26 if the runner has one, otherwise
@@ -49,7 +49,74 @@ jobs:
             -scheme HighRise \
             -destination 'platform=macOS' \
             CODE_SIGNING_ALLOWED=NO \
-            | tail -80
+            | tee xcodebuild.log | tail -80
+
+      # The iOS companion (HighRiseMobile) has no AppleScript to drive Mail/
+      # Outlook, so it can't reuse the macOS send path — it reuses the shared
+      # Foundation-only import/merge core and hands off to
+      # MFMailComposeViewController instead.
+      #
+      # Finding a simulator: `xcodebuild -showdestinations` was tried first,
+      # but right after a fresh `xcodegen generate` it can report only the
+      # generic placeholder destination ("Any iOS Simulator Device") with no
+      # real device UUIDs yet, which broke both a `simctl create` fallback
+      # (the runtime name "iOS-latest" isn't valid — simctl rejected it) and
+      # a second -showdestinations retry (which then picked the placeholder
+      # itself). Querying `simctl list devices` directly sidesteps all of
+      # that — the runner images ship with real iOS Simulator devices
+      # pre-installed, so this just needs one of their UDIDs (preferring an
+      # iPhone, but any available iOS device works).
+      - name: Test iOS app
+        run: |
+          set -o pipefail
+          DEST=$(xcrun simctl list devices available -j | jq -r '
+            .devices
+            | to_entries
+            | map(select(.key | test("iOS"; "i")))
+            | map(.value[])
+            | map(select(.isAvailable))
+            | (map(select(.name | test("iPhone"))) + .)
+            | .[0].udid // empty
+          ')
+          if [ -z "$DEST" ]; then
+            echo "::error::No available iOS Simulator device found on this runner."
+            exit 1
+          fi
+          echo "Using simulator id: $DEST"
+          xcodebuild test \
+            -scheme HighRiseMobile \
+            -destination "platform=iOS Simulator,id=$DEST" \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild-ios.log | tail -80
+
+      # HighRise-MAS is the sandboxed Mac App Store variant (see
+      # MAS_VARIANT_PLAN.md) — same sources as HighRise, but with
+      # app-sandbox entitlement on and Outlook gated out via MAS_BUILD.
+      # Ad-hoc signing (not CODE_SIGNING_ALLOWED=NO like the other jobs)
+      # because entitlements are only embedded via an actual code signature —
+      # this is the regression check that nobody silently flips the sandbox
+      # entitlement off or breaks the entitlements file wiring.
+      - name: Build HighRise-MAS and verify the sandbox entitlement
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -scheme HighRise-MAS \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath /tmp/mas-build \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_STYLE=Manual \
+            | tee xcodebuild-mas.log | tail -80
+
+          APP="/tmp/mas-build/Build/Products/Release/HighRise-MAS.app"
+          codesign -d --entitlements :- "$APP" > entitlements.plist
+          SANDBOX=$(/usr/libexec/PlistBuddy -c "Print :com.apple.security.app-sandbox" entitlements.plist 2>/dev/null || echo "MISSING")
+          if [ "$SANDBOX" != "true" ]; then
+            echo "::error::HighRise-MAS's com.apple.security.app-sandbox entitlement is '$SANDBOX', expected 'true'"
+            cat entitlements.plist
+            exit 1
+          fi
+          echo "Confirmed: com.apple.security.app-sandbox = true"
 
   # The Windows companion (Windows/HighRise-Merge.ps1) targets Windows
   # PowerShell 5.1, which only exists on Windows — so its dry run is exercised
@@ -60,7 +127,7 @@ jobs:
 
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Dry run under Windows PowerShell 5.1
         shell: powershell

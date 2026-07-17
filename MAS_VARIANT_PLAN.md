@@ -8,8 +8,22 @@
 > "App sandbox not enabled." That failure is by design — `HighRise.entitlements`
 > deliberately sets `com.apple.security.app-sandbox` to `false` because two core
 > capabilities are incompatible with the sandbox as currently implemented:
-> Apple Events automation of Mail/Outlook, and spawning `/usr/bin/unzip` to read
-> `.xlsx`/`.docx`. Do **not** "fix" the validation error by flipping that flag.
+> Apple Events automation of Mail/Outlook, and (until 2026-07-16) spawning
+> `/usr/bin/unzip` to read `.xlsx`/`.docx`.
+>
+> Structure decision, take two (2026-07-16, later the same day): a
+> configuration-based approach (same `HighRise` target, an extra build
+> configuration) was proposed as less confusing than a second target — but
+> real, already-working implementation of the second-target approach (a
+> `HighRise-MAS` target, its own entitlements file, `MAS_BUILD` gating across
+> `MailClient`/`AppleScriptBuilder`/`OutlookContactsImporter`/`PreSendReport`/
+> the Views) landed before that reconsideration could happen. Reworking
+> working code into the configuration shape for a naming preference wasn't
+> worth it, so **the second-target approach is what's actually implemented**
+> below. Sandboxing is still an all-or-nothing, per-build-product setting
+> (baked into the code signature), so the Developer ID build and the MAS
+> build are two separate build products regardless of which XcodeGen shape
+> holds them.
 
 ---
 
@@ -61,56 +75,73 @@ One-time setup (owner only — requires the Apple Developer Account Holder role)
 
 ### What breaks under the sandbox, and the replacement for each
 
-| Capability today | Why the sandbox blocks it | MAS replacement |
-|---|---|---|
-| Spawn `/usr/bin/unzip` to read `.xlsx`/`.docx` | Child processes don't inherit the user-selected-file sandbox extension reliably; writing extracted files outside the container is denied | In-process ZIP reading: parse the ZIP central directory in Swift and inflate entries with `libcompression` (`COMPRESSION_ZLIB`). Office files are plain DEFLATE zips — no encryption/zip64 needed. Pure-logic, unit-testable, no third-party deps. The Windows port already has an in-process `XlsxReader.cs` to crib the container logic from. |
-| Apple Events automation of **Mail** | `com.apple.security.automation.apple-events` alone is a hardened-runtime entitlement; sandboxed apps need scripting-target entitlements | `com.apple.security.scripting-targets` with Mail's `com.apple.mail.compose` access group. **Needs a spike**: confirm the compose access group covers `send` (not just draft creation) on current macOS. If send is not covered, MAS mode falls back to "create drafts in Mail" + user presses send, which is still a coherent product. |
-| Apple Events automation of **Outlook** | Outlook publishes no scripting access groups; the only route is `com.apple.security.temporary-exception.apple-events`, which App Review generally rejects | **Dropped from the MAS variant.** Outlook users are served by the Developer ID build (and the Windows companion). The MAS UI must hide the Outlook path entirely — no dead buttons. |
-| File writes (CSV template export, logs) | Arbitrary-path writes denied | Already user-driven via save panels → automatically granted; audit for any hardcoded paths. |
+| Capability today | Why the sandbox blocks it | MAS replacement | Status |
+|---|---|---|---|
+| Spawn `/usr/bin/unzip` to read `.xlsx`/`.docx` | Child processes don't inherit the user-selected-file sandbox extension reliably; writing extracted files outside the container is denied | In-process ZIP reading: parse the ZIP central directory in Swift and inflate entries with `libcompression` (`COMPRESSION_ZLIB`, which is raw DEFLATE despite the name). Office files are plain DEFLATE zips — no encryption/zip64 needed. | **Done (2026-07-16).** `ZipEntryReader.swift` rewritten pure-Swift, no subprocess. Landed directly in the main `HighRise` target (channel-neutral — it also removes a subprocess spawn from the Developer ID build). Tested against real zip fixtures in `ZipEntryReaderTests.swift`. |
+| Apple Events automation of **Mail** | `com.apple.security.automation.apple-events` alone is a hardened-runtime entitlement; sandboxed apps need scripting-target entitlements | `com.apple.security.scripting-targets` with Mail's `com.apple.mail.compose` access group. **Needs a spike**: confirm the compose access group covers `send` (not just draft creation) on current macOS. If send is not covered, MAS mode falls back to "create drafts in Mail" + user presses send, which is still a coherent product. | Not started. |
+| Apple Events automation of **Outlook** | Outlook publishes no scripting access groups; the only route is `com.apple.security.temporary-exception.apple-events`, which App Review generally rejects | **Dropped from the MAS variant.** Outlook users are served by the Developer ID build (and the Windows companion). The MAS UI must hide the Outlook path entirely — no dead buttons, gated via `#if MAS_BUILD`. | **Done (2026-07-16).** Every `.outlook` reference in `MailClient`, `AppleScriptBuilder`, `OutlookContactsImporter`, `PreSendReport`, `ContactsImportView`, `HomeView`, and `SendView` is wrapped in `#if !MAS_BUILD`/`#if MAS_BUILD`; `OutlookContactsImporter.fetchTable()` throws `.notInstalled` under `MAS_BUILD` instead of attempting AppleScript. |
+| File writes (CSV template export, logs) | Arbitrary-path writes denied | Already user-driven via save panels → automatically granted; audit for any hardcoded paths. | Not audited yet. |
 
 ### Build-system shape (XcodeGen)
 
 - New entitlements file `HighRise/HighRise-MAS.entitlements`: `app-sandbox: true`,
   `com.apple.security.files.user-selected.read-write: true`, scripting-targets
   for Mail. No network entitlement needed (no SMTP by design).
-- New XcodeGen target **`HighRise-MAS`** in `project.yml` sharing all sources,
-  differing only in entitlements, `SWIFT_ACTIVE_COMPILATION_CONDITIONS:
-  MAS_BUILD`, and provisioning. Same bundle ID (`com.bryansnotes.highrise`) —
-  Apple permits the same ID for MAS + Developer ID distribution.
+- **A second XcodeGen target, `HighRise-MAS`**, compiling the same
+  `HighRise` source folder as the main `HighRise` target (see "Structure
+  decision, take two" above). It sets `CODE_SIGN_ENTITLEMENTS` to
+  `HighRise/HighRise-MAS.entitlements` and `SWIFT_ACTIVE_COMPILATION_CONDITIONS:
+  MAS_BUILD`, and deliberately leaves `PRODUCT_NAME` unset — setting it to
+  "HighRise" would collide with the main target's Swift module name, since
+  both compile the identical source folder (same precedent as
+  `HighRiseMobile`). `CFBundleDisplayName` in `Info.plist` is hardcoded to
+  "HighRise" already, so the user-visible app name is unaffected. A dedicated
+  `HighRise-MAS` scheme builds/archives that target (`HighRiseTests` runs
+  against the main target for both schemes — the new CI job below is what
+  actually exercises MAS-specific behavior). Same bundle ID
+  (`com.bryansnotes.highrise`) either way — Apple permits the same ID for
+  MAS + Developer ID distribution.
 - Feature gating in code via `#if MAS_BUILD` **only at the capability seams**
-  (mail-provider picker, Office import path); merge/template logic stays shared
-  and unconditional.
+  (mail-provider picker, Outlook contacts import, pre-send report — the
+  Office import path no longer needs gating at all now that `ZipEntryReader`
+  works identically both ways); merge/template logic stays shared and
+  unconditional.
 
 ### Work items, in order
 
-1. **Spike (½ day): Mail scripting-targets.** Minimal sandboxed test app that
+1. ~~**In-process ZIP reader**~~ — **done.** Landed in the shared `HighRise`
+   target; the Developer ID build already benefits (no process spawn).
+2. **Spike (½ day): Mail scripting-targets.** Minimal sandboxed test app that
    composes and sends via Apple Events with `com.apple.mail.compose`. The
-   result (send vs. draft-only) decides the MAS product story.
-2. **In-process ZIP reader** (`ZipArchiveReader.swift`, ~250 LOC + tests with
-   real `.xlsx`/`.docx` fixtures). Land it in the **main** target first and
-   delete the `unzip` spawn everywhere — it makes the Developer ID build better
-   too (no process spawn, works on locked-down Macs).
-3. **`HighRise-MAS` target + entitlements + `MAS_BUILD` gating** of the
-   provider picker; hide Outlook; empty-state copy pointing Outlook users at
-   the website build.
-4. **CI job** building the MAS target with a post-build assertion that
-   `codesign -d --entitlements` shows `app-sandbox = true`.
+   result (send vs. draft-only) decides the MAS product story. **Still the
+   one open, unverified risk** — requires a real Mac to test; cannot be
+   verified from a Linux container.
+3. ~~**`HighRise-MAS` target + `HighRise-MAS.entitlements` + scheme**~~ —
+   **done.** `MAS_BUILD` gates the provider picker and Outlook contacts
+   import; Outlook UI paths are hidden/dead-end to the Developer ID build
+   under `MAS_BUILD`.
+4. ~~**CI job**~~ — **done.** `.github/workflows/ci.yml`'s "Build HighRise-MAS
+   and verify the sandbox entitlement" step builds the `HighRise-MAS` scheme
+   ad-hoc signed and asserts via `codesign -d --entitlements` +
+   `PlistBuddy` that `com.apple.security.app-sandbox` is `true`.
 5. **App Store metadata + upload** — screenshots, privacy questionnaire
-   (no data collection; everything is local), then archive/upload. *Approval
-   gate: submission itself waits for Bryan's go.*
+   (no data collection; everything is local), then archive/upload via the
+   `HighRise-MAS` scheme. *Approval gate: submission itself waits for Bryan's
+   go.*
 
 ### Sequencing note
 
-Item 2 is the only substantial engineering and is channel-neutral — do it
-first, ship it to the Developer ID build, and the MAS variant becomes mostly
-configuration plus the Mail spike outcome.
+Item 1 was the only substantial engineering and was channel-neutral — done
+first, shipped to the Developer ID build already. The MAS variant is now
+mostly the Mail spike outcome plus configuration/entitlements work.
 
 ---
 
 ## Housekeeping flagged while setting this up
 
-- The repo tracks both `Windows/README.md` and `windows/README.md`
-  (old PowerShell companion vs. new .NET app). On case-insensitive macOS
-  volumes these collide and one file perpetually shows as modified. Merge the
-  old `Windows/` content into `windows/` (or delete the stale copy) from the
-  Linux container, where the paths are distinct.
+- The repo used to track both `Windows/README.md` and `windows/README.md`
+  (old PowerShell companion vs. a since-abandoned .NET rewrite attempt from
+  another session). That collides on case-insensitive macOS volumes. As of
+  2026-07-16 only `Windows/` (the PowerShell companion, documented in
+  `CLAUDE.md`) is current — if a lowercase `windows/` tree reappears from a
+  stale branch merge, delete it rather than reconciling two companions.

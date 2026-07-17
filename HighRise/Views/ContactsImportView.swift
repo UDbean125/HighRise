@@ -43,9 +43,14 @@ struct ContactsImportView: View {
             switch result {
             case .success(let urls):
                 guard let url = urls.first else { return }
-                let didAccess = url.startAccessingSecurityScopedResource()
-                defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-                coordinator.importFile(at: url)
+                // The security scope must stay open for the whole async
+                // import, not just until this closure returns — so it's
+                // acquired and released inside the Task, spanning the await.
+                Task {
+                    let didAccess = url.startAccessingSecurityScopedResource()
+                    defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+                    await coordinator.importFile(at: url)
+                }
             case .failure(let error):
                 coordinator.importError = error.localizedDescription
             }
@@ -56,6 +61,9 @@ struct ContactsImportView: View {
         VStack(alignment: .leading, spacing: 20) {
             header
             importControls
+            if coordinator.isImporting {
+                importingIndicator
+            }
             templateRow
 
             if let error = coordinator.importError {
@@ -65,9 +73,118 @@ struct ContactsImportView: View {
 
             if !coordinator.contacts.isEmpty {
                 columnsCard
+                cleanupCard
+                skippedRowsCard
                 previewCard
             }
         }
+    }
+
+    /// Full disclosure of what the automatic import cleanup fixed, plus
+    /// one-click suggested repairs that are never applied on their own —
+    /// the answer to "why doesn't my list look exactly like my file?".
+    @ViewBuilder
+    private var cleanupCard: some View {
+        let report = coordinator.cleanupReport
+        let suggestions = coordinator.cleanupSuggestions
+        if !coordinator.cleanupEnabled || !report.isEmpty || !suggestions.isEmpty {
+            SectionCard("Import cleanup", systemImage: "wand.and.stars",
+                        subtitle: "Fixes apply to this import only — your original file is never touched.") {
+                VStack(alignment: .leading, spacing: 12) {
+                    if !coordinator.cleanupEnabled {
+                        Label("Cleanup is off — this is the data exactly as imported.",
+                              systemImage: "eye")
+                            .font(.callout).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Re-apply Cleanup") { coordinator.cleanupEnabled = true }
+                    } else {
+                        ForEach(report.changes) { change in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Label(change.summary, systemImage: icon(for: change.kind))
+                                    .font(.callout)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                if let example = change.examples.first {
+                                    exampleText(example).padding(.leading, 26)
+                                }
+                            }
+                        }
+                        if !suggestions.isEmpty {
+                            if !report.isEmpty { Divider() }
+                            Text("Suggested fixes")
+                                .font(.subheadline.weight(.semibold))
+                            ForEach(suggestions) { suggestion in
+                                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(suggestion.title)
+                                            .font(.callout)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                        if let example = suggestion.examples.first {
+                                            exampleText(example)
+                                        }
+                                    }
+                                    Spacer()
+                                    Button("Apply") {
+                                        coordinator.applyCleanupSuggestion(suggestion)
+                                    }
+                                }
+                            }
+                        }
+                        Divider()
+                        Button {
+                            coordinator.cleanupEnabled = false
+                        } label: {
+                            Label("Show Original Data", systemImage: "arrow.uturn.backward")
+                        }
+                        .buttonStyle(.link)
+                        .help("Turn off all cleanup and use the import exactly as it was")
+                    }
+                }
+            }
+        }
+    }
+
+    /// Names the rows silently dropped for having no email address, so
+    /// "N rows skipped" in the summary line is never a dead end — the user can
+    /// see exactly which rows and fix the source file if it's a mistake.
+    @ViewBuilder
+    private var skippedRowsCard: some View {
+        let skipped = coordinator.skippedRows
+        if !skipped.isEmpty {
+            SectionCard("Skipped rows", systemImage: "questionmark.folder",
+                        subtitle: "\(skipped.count) row\(skipped.count == 1 ? "" : "s") had no value in the email column and weren't imported.") {
+                DisclosureGroup("Show skipped rows") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(skipped) { row in
+                            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                Text("Row \(row.rowNumber)")
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 56, alignment: .leading)
+                                Text(row.preview)
+                                    .font(.callout)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+                    .padding(.top, 4)
+                }
+            }
+        }
+    }
+
+    private func icon(for kind: ImportCleaner.Change.Kind) -> String {
+        switch kind {
+        case .whitespace:        return "scissors"
+        case .junkValue:         return "eraser"
+        case .emailRepair:       return "envelope.badge"
+        case .repeatedHeaderRow: return "tablecells"
+        }
+    }
+
+    private func exampleText(_ example: ImportCleaner.Example) -> some View {
+        Text("e.g. “\(example.before)” → \(example.after.isEmpty ? "(blank)" : "“\(example.after)”")")
+            .font(.caption).foregroundStyle(.secondary)
+            .lineLimit(2)
     }
 
     /// Live data-quality readout: usable addresses, duplicates, and how
@@ -174,7 +291,7 @@ struct ContactsImportView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Add your contacts").font(.title2).bold()
-            Text("Import from a file (CSV, Excel, Word, or PDF) or pull directly from your address book. CSV and Excel need a header row naming each column; Word and PDF are scanned for addresses as a best effort.")
+            Text("Import from a file (CSV, Excel, Word, or PDF) or pull directly from your address book. CSV and Excel need a header row naming each column; Word and PDF are scanned for addresses as a best effort. Messy exports are tidied automatically — every fix is disclosed below, and the original data is one click away.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -199,23 +316,37 @@ struct ContactsImportView: View {
             } label: {
                 Label("Apple Contacts", systemImage: "person.crop.circle")
             }
+#if !MAS_BUILD
             Button {
-                coordinator.importFromOutlookContacts()
+                Task { await coordinator.importFromOutlookContacts() }
             } label: {
                 Label("Outlook Contacts", systemImage: "person.crop.circle.badge.questionmark")
             }
+#endif
             if !coordinator.contacts.isEmpty {
                 Spacer()
                 Text("\(coordinator.contacts.count) loaded")
                     .foregroundStyle(.secondary)
             }
         }
+        .disabled(coordinator.isImporting)
         .overlay(alignment: .bottomLeading) {
             if showPaste {
                 pastePanel.offset(y: 4)
             }
         }
         .padding(.bottom, showPaste ? 220 : 0)
+    }
+
+    /// Shown while a fresh import runs in the background — large real-world
+    /// exports (tens of thousands of rows) can take several seconds, and
+    /// without this the screen just looks stuck.
+    private var importingIndicator: some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text("Importing… large files (tens of thousands of rows) can take a little while.")
+                .font(.callout).foregroundStyle(.secondary)
+        }
     }
 
     private var pastePanel: some View {
@@ -228,8 +359,9 @@ struct ContactsImportView: View {
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
             HStack {
                 Button("Import Pasted Text") {
-                    coordinator.importCSV(pastedText)
+                    let text = pastedText
                     showPaste = false
+                    Task { await coordinator.importCSV(text) }
                 }
                 .disabled(pastedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Button("Cancel") { showPaste = false }
@@ -283,7 +415,10 @@ struct ContactsImportView: View {
             Text("Worksheet").font(.subheadline).foregroundStyle(.secondary)
             Picker("Worksheet", selection: Binding(
                 get: { coordinator.selectedWorksheet ?? "" },
-                set: { if !$0.isEmpty { coordinator.selectWorksheet($0) } }
+                set: { name in
+                    guard !name.isEmpty else { return }
+                    Task { await coordinator.selectWorksheet(name) }
+                }
             )) {
                 ForEach(coordinator.availableWorksheets, id: \.name) { sheet in
                     Text(sheet.name).tag(sheet.name)
@@ -291,6 +426,7 @@ struct ContactsImportView: View {
             }
             .labelsHidden()
             .frame(maxWidth: 240)
+            .disabled(coordinator.isImporting)
             Text("This workbook has \(coordinator.availableWorksheets.count) sheets.")
                 .font(.callout).foregroundStyle(.secondary)
             Spacer()

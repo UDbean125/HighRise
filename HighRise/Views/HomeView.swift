@@ -223,7 +223,11 @@ struct HomeView: View {
                 }
                 Spacer()
                 Image(systemName: "checkmark.seal.fill").foregroundStyle(.green)
+#if MAS_BUILD
+                    .opacity(!coordinator.senderIdentity.isEmpty ? 1 : 0.25)
+#else
                     .opacity(coordinator.selectedClient == .outlook || !coordinator.senderIdentity.isEmpty ? 1 : 0.25)
+#endif
             }
 
             Picker("Email app", selection: $coordinator.selectedClient) {
@@ -272,8 +276,10 @@ struct HomeView: View {
             return coordinator.senderIdentity.isEmpty
                 ? "Apple Mail · your default account"
                 : "Apple Mail · \(coordinator.senderIdentity)"
+#if !MAS_BUILD
         case .outlook:
             return "Microsoft Outlook · its default account"
+#endif
         }
     }
 

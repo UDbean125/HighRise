@@ -9,7 +9,9 @@ import Foundation
 /// all behave exactly as if they'd typed it themselves.
 enum MailClient: String, CaseIterable, Identifiable {
     case appleMail = "Apple Mail"
+    #if !MAS_BUILD
     case outlook = "Microsoft Outlook"
+#endif
 
     var id: String { rawValue }
 
@@ -17,7 +19,9 @@ enum MailClient: String, CaseIterable, Identifiable {
     var scriptingName: String {
         switch self {
         case .appleMail: return "Mail"
+        #if !MAS_BUILD
         case .outlook:   return "Microsoft Outlook"
+#endif
         }
     }
 
@@ -25,14 +29,18 @@ enum MailClient: String, CaseIterable, Identifiable {
     var bundleIdentifier: String {
         switch self {
         case .appleMail: return "com.apple.mail"
+        #if !MAS_BUILD
         case .outlook:   return "com.microsoft.Outlook"
+#endif
         }
     }
 
     var symbolName: String {
         switch self {
         case .appleMail: return "envelope"
+        #if !MAS_BUILD
         case .outlook:   return "envelope.badge"
+#endif
         }
     }
 }

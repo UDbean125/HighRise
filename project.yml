@@ -17,6 +17,7 @@ options:
   bundleIdPrefix: com.bryansnotes
   deploymentTarget:
     macOS: "14.0"
+    iOS: "17.0"
   createIntermediateGroups: true
 
 settings:
@@ -36,7 +37,7 @@ targets:
       - path: HighRise
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.hensolutions.HighRise-G2
+        PRODUCT_BUNDLE_IDENTIFIER: com.bryansnotes.highrise
         PRODUCT_NAME: HighRise
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_FILE: HighRise/Info.plist
@@ -46,6 +47,33 @@ targets:
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"
           - "@executable_path/../Frameworks"
+
+  # Sandboxed Mac App Store variant — same sources as `HighRise`, differing
+  # only in entitlements (app-sandbox on, Mail scripting-targets instead of
+  # Apple Events automation) and the MAS_BUILD flag, which gates Outlook out
+  # entirely (no sandboxed automation route exists for it). See
+  # MAS_VARIANT_PLAN.md. Known open risk: whether Mail's `com.apple.mail.compose`
+  # scripting-target access group actually covers *sending*, not just
+  # drafting, under the sandbox — unverified until built and tested on a Mac.
+  HighRise-MAS:
+    type: application
+    platform: macOS
+    sources:
+      - path: HighRise
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bryansnotes.highrise
+        # Deliberately NOT "HighRise" — that would collide with the regular
+        # `HighRise` target's Swift module name, since both compile the same
+        # `HighRise` source folder. CFBundleDisplayName in Info.plist is
+        # hardcoded to "HighRise" already, so the user-visible name is
+        # unaffected by this.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_FILE: HighRise/Info.plist
+        CODE_SIGN_ENTITLEMENTS: HighRise/HighRise-MAS.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+        ENABLE_HARDENED_RUNTIME: YES
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: MAS_BUILD
 
   HighRiseTests:
     type: bundle.unit-test
@@ -59,11 +87,84 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.bryansnotes.highriseTests
         GENERATE_INFOPLIST_FILE: YES
 
+  # iOS companion. AppleScript automation (how the macOS app drives Mail/
+  # Outlook) doesn't exist on iOS, so this target reuses only the portable,
+  # Foundation-only import/merge core (listed explicitly below — each file
+  # also belongs to the macOS `HighRise` target's `HighRise` source path, so
+  # it's compiled into both, not moved) and hands each recipient to
+  # `MFMailComposeViewController` instead of scripting Mail. See
+  # `HighRiseMobile/HighRiseMobileApp.swift`.
+  HighRiseMobile:
+    type: application
+    platform: iOS
+    sources:
+      - path: HighRiseMobile
+      - path: HighRise/Models/Contact.swift
+      - path: HighRise/Models/EmailTemplate.swift
+      - path: HighRise/Models/TemplateVariant.swift
+      - path: HighRise/Models/MergePreview.swift
+      - path: HighRise/Models/RecipientTable.swift
+      - path: HighRise/Models/FieldSynonyms.swift
+      - path: HighRise/Services/CSVParser.swift
+      - path: HighRise/Services/EmailValidator.swift
+      - path: HighRise/Services/TemplateMergeEngine.swift
+      - path: HighRise/Services/MergeValueFormatter.swift
+      - path: HighRise/Services/DuplicateDetector.swift
+      - path: HighRise/Services/ImportCleaner.swift
+      - path: HighRise/Services/ImportPipeline.swift
+      - path: HighRise/Services/MarkdownToHTML.swift
+      - path: HighRise/Services/Greeting.swift
+      - path: HighRise/Services/NextStep.swift
+    settings:
+      base:
+        # Same bundle ID as the macOS `HighRise` target, deliberately — this
+        # is what lets both platforms live under one "Universal Purchase"
+        # App Store Connect app record instead of two separate listings.
+        # Product NAME is still NOT "HighRise" (that would collide with the
+        # macOS target's Swift module name) — CFBundleDisplayName below is
+        # what the user actually sees on the Home Screen; the module stays
+        # "HighRiseMobile" to match `@testable import HighRiseMobile` in
+        # HighRiseMobileTests.
+        PRODUCT_BUNDLE_IDENTIFIER: com.bryansnotes.highrise
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_FILE: HighRiseMobile/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1,2"
+
+  HighRiseMobileTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: HighRiseMobileTests
+    dependencies:
+      - target: HighRiseMobile
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bryansnotes.highrise.mobileTests
+        GENERATE_INFOPLIST_FILE: YES
+
 schemes:
   HighRise:
     build:
       targets:
         HighRise: all
+        HighRiseTests: [test]
+    test:
+      targets:
+        - HighRiseTests
+  HighRiseMobile:
+    build:
+      targets:
+        HighRiseMobile: all
+        HighRiseMobileTests: [test]
+    test:
+      targets:
+        - HighRiseMobileTests
+
+  HighRise-MAS:
+    build:
+      targets:
+        HighRise-MAS: all
         HighRiseTests: [test]
     test:
       targets:
