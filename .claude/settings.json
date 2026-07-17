@@ -1,0 +1,21 @@
+{
+  "//": "HighRise — pre-approved tools for autonomous dev work.",
+  "//activate": "Copy this to .claude/settings.json to stop approval prompts:  cp .claude/settings.example.json .claude/settings.json",
+  "//note": "Scoped to dev tooling + the GitHub and scheduling MCP servers this project uses — no shell wildcards. Only the repo owner can apply this; the agent cannot widen its own permissions.",
+  "permissions": {
+    "allow": [
+      "Bash(git:*)",
+      "Bash(xcodegen:*)",
+      "Bash(swift:*)",
+      "Bash(swiftc:*)",
+      "Bash(xcodebuild:*)",
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "mcp__github__*",
+      "mcp__Claude_Code_Remote__*"
+    ]
+  }
+}

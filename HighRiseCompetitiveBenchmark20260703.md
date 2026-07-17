@@ -1,0 +1,136 @@
+# HighRise Competitive Benchmark & Feature Roadmap
+
+**Date:** July 3, 2026 · **Method:** 8-agent research sweep — 25 tools profiled across 5 market clusters (macOS-native, Gmail SaaS, Microsoft ecosystem, cold-outreach platforms, open-source/trends), 183 web lookups, synthesized into a gap analysis, then adversarially reviewed by independent feasibility and completeness critics. All priorities below reflect the post-critique corrections.
+
+---
+
+## BLUF — Executive Summary
+
+**HighRise's core architecture is genuinely uncontested:** no living macOS product sends personalized merges through the user's *own* Apple Mail or Outlook client with zero credential setup. Every rival requires SMTP passwords, OAuth scopes, or routes mail through vendor servers — and SMTP pain is the #1 complaint across the category. The Mac is also the *worst-served platform in the entire mail-merge market* right now (Word's Mac merge broke outright in 2025; Microsoft's replacement is Windows/web-only; Pages can't email its merges at all).
+
+**But HighRise currently sits below the competitive floor on five near-universal features:** attachments, scheduled sending, fallback values, a send-history record, and mid-send resilience. These are table stakes, not differentiators — and all five are feasible within our no-server architecture.
+
+**The winning strategy:** close the five floor gaps (P0/P1), double down on the privacy + own-account + draft-first-safety story competitors structurally can't copy, price as a one-time license with a maintenance plan, and deliberately skip the tracking/spintax/designer features that belong to other categories.
+
+---
+
+## 1. Where HighRise Already Wins (verified against 25 tools)
+
+| Advantage | Why it holds up |
+|---|---|
+| **Only living tool that sends via the user's own Apple Mail/Outlook** | Real signature, real Sent folder, real deliverability identity, zero SMTP/OAuth setup. The last tools that did this (Sig Software, SmallCubed) are dead. *Caveat honestly:* claim is "own Apple Mail/Outlook" — eM Client has built-in mass mail as its own client; verify before using "only" in marketing. |
+| **Draft-first by default + review/flag/exclude stage** | Safest send pipeline in the category. Word sends immediately with no cancel or log; Mailmeteor's fields fail silently. Nobody makes "you see every email before anything sends" the headline. We should. |
+| **Broadest import pipeline** | CSV/TSV, native .xlsx, Word/PDF extraction (unique), Apple/iCloud Contacts, Outlook contacts. Sheets-locked rivals (YAMM/GMass) can't follow. |
+| **Zero-infrastructure privacy** | No servers, no vendor cloud, no OAuth scopes. SecureMailMerge charges $10–15/user/mo for a weaker version of this story on M365 only. *Scope the claim carefully* (see §5). |
+| **Immune to the category's worst failure modes** | No OAuth disconnects mid-campaign, no billing-after-cancellation, no vendor suspending your sends, no promo footers injected into your mail. |
+| **Modern native SwiftUI in a field of dated software** | MaxBulk is "dated" in every review; GMass is "cluttered"; Word merge is a 20-year-old wizard. Polish is a live differentiator. |
+| **Engineering rigor** | Injection-tested AppleScript escaping, HTML auto-escaping, CI. Market the *injection-testing story*, not the test count. |
+
+---
+
+## 2. Feature Matrix — HighRise vs. the Field
+
+| Feature | **HighRise** | Direct Mail | SerialMailer | MaxBulk | SecureMailMerge | Word+Outlook | Thunderbird MM | YAMM | GMass |
+|---|---|---|---|---|---|---|---|---|---|
+| Sends via user's own client, no creds | **Yes** | No | No | No | Partial (M365) | Yes (legacy, fragile) | Yes (TB only) | Gmail only | Gmail only |
+| Draft-first review default | **Yes** | No | No | No | No | No | Partial | Partial | No |
+| Per-recipient preview + auto-exclude bad rows | **Yes** | Partial | Partial | Partial | No | Partial | Partial | No | Partial |
+| Excel .xlsx native import | Yes | Partial | Yes | Yes | Yes | Yes | No | No | No |
+| Word/PDF contact extraction | **Yes — unique** | No | No | No | No | No | No | No | No |
+| Personalized subject | Yes | Yes | Yes | Yes | Yes | **No** | Yes | Yes | Yes |
+| Conditional if/else content | No | Yes | Yes | Pro | No | Yes | Yes | No | No |
+| Fallback values | No | Yes | No | No | No | Partial | Via if/else | No | No |
+| Attachments (global) | **No** | Yes | Yes | Yes | Yes | Partial | Yes | Yes | Yes |
+| Attachments (per-recipient) | **No** | No | Yes | No | Yes | No | Yes | Yes | Yes |
+| CC/BCC | No | No | Yes | No | Yes | No | Yes | No | No |
+| Scheduled sending | **No** | Yes | Reported | Yes | Yes | No | Via add-on | Yes | Yes |
+| Send history log | **No** | Yes | Partial | Yes | Partial | No | No | Partial | Yes |
+| Open/click tracking | No — deliberate | Yes (cloud) | No — deliberate | Self-hosted | No — deliberate | No | No | Yes | Yes |
+| AI writing | No | Partial | No | Yes | No | Copilot $ | No | No | Yes |
+| Pricing | TBD | Credits/sub | ~$45 once | $50–60 once | ~$10–15/u/mo | M365 bundle | Free | $25–50/u/yr | $249–599/u/yr |
+
+*(Full 30-row matrix and 25-tool profiles with sources available in the raw research data.)*
+
+---
+
+## 3. The Roadmap — Critique-Adjusted Priorities
+
+### P0 — Table stakes we're missing (build in this order)
+
+| # | Feature | Effort | Notes (incl. feasibility corrections) |
+|---|---|---|---|
+| 1 | **Attachments — global + per-recipient** (`{{AttachmentPath}}` column) | M | Every macOS rival + the best SaaS tools have this; SecureMailMerge builds its whole pitch on it. Both Mail & legacy Outlook script it. Fold file-existence checks into the review stage **and add a post-creation readback** (Mail silently drops bad paths). Cold-email SaaS structurally can't copy this — pooled deliverability forbids attachments. |
+| 2 | **Per-field fallbacks** `{{First\|there}}` | S | Cheapest high-value gap. Missing first name → "Hi there" instead of dropping the recipient. Review stage shows who used fallbacks. Define an escape rule so real data ("AT\|T") can't parse as a fallback; extend the injection suite. |
+| 3 | **Mid-send resilience** — pause/cancel/resume, crash recovery, double-send lockout | M | *The critics' biggest catch: absent from every competitor conversation yet the #1 real-world complaint class.* Persist per-recipient state **during** the run; on relaunch, resume from last confirmed send with sent rows locked out. |
+| 4 | **Scheduled sending** | M | Universal across rivals. **Correction:** Apple Mail's Send Later is *not* AppleScript-accessible — the robust path is an in-app scheduler + `SMAppService` login-item helper, with honest missed-send recovery UX ("3 sends were due while your Mac slept — send now?"). |
+
+### P1 — Competitive necessities
+
+| # | Feature | Effort | Notes |
+|---|---|---|---|
+| 5 | **Local send-history log** | S–M | We already compute per-recipient results and throw them away. Label status honestly ("handed to Mail," not "delivered"). Add a Sent-folder reconciliation pass capturing **Message-IDs** — the prerequisite for reply detection later. Market as "campaign records without tracking pixels." |
+| 6 | **Test-send-to-self** | S | Near-universal in rivals; one button in the review stage. A preview pane isn't a real inbox with a real signature and attachments. |
+| 7 | **Saved templates / campaign reuse** (incl. column mappings) | S–M | The retention feature — recruiters and teachers run the same merge monthly. So ubiquitous competitors don't even market it. |
+| 8 | **CC / BCC** (with merge variables) | S | **Correction:** Reply-to is *infeasible* in Apple Mail's dictionary (same limitation that blocks custom headers) — offer it legacy-Outlook-only with a help note. BCC-yourself pairs with the send log. |
+| 9 | **Basic rich-text editor** (bold/italic/links/lists → HTML) | M | *Raised from P3 by the completeness critic:* the personas justifying attachments (realtors, lawyers, teachers) won't hand-author HTML — its absence is a purchase blocker, not polish. Full fidelity in Outlook; graceful, clearly-labeled degradation in Apple Mail (whose scriptable HTML body has been broken since ~El Capitan). **No drag-and-drop designer — ever.** |
+| 10 | **Conditional content** — one `{{#if}}…{{#else}}…{{/if}}` block | M | Free in Word and $0 OSS tools; a paid app without it loses spec-sheet fights. Minimal grammar only (equality/contains, no loops). Review stage shows which branch each recipient gets. |
+
+### P2 — Differentiators (after the floor is closed)
+
+| # | Feature | Effort | Notes |
+|---|---|---|---|
+| 11 | **Sending controls**: randomized jitter + per-account daily cap + duplicate-flag at import | S | Protects users from iCloud (~500/day)/Gmail/Exchange limits they discover only via account flags. Cap counts "sends from this app" — say so. This is the honest answer to "your own provider can still flag you." |
+| 12 | **From-account selection** | M | Both clients hold multiple accounts; AppleScript can target them. Budget the effort for *signature reliability testing* — consider app-managed signature blocks rather than trusting Mail. |
+| 13 | **Reply/bounce detection + follow-up reminders** | L | The privacy-safe substitute for the tracking stack that justifies $30–100/mo SaaS pricing — via AppleScript scans of the user's own mailbox, no pixels. **Highest-risk item:** requires the Message-ID log first, a performance spike on a large real mailbox before committing, and works in Mail + legacy Outlook only. Ship v1 as passive "no reply after N days" reminders. |
+
+### P3 — Optional / experimental
+
+| # | Feature | Notes |
+|---|---|---|
+| 14 | **AI writing assist (BYO API key)** | *Downgraded by the completeness critic:* trend anxiety, not user demand — and it collides with the privacy story. If built: strictly opt-in, template-level drafting first, user's own key, direct API calls, re-scoped privacy language shipped **first**. |
+| 15 | **Domain-existence check at import** | *Downgraded + corrected:* use `DNSServiceQueryRecord` (not Network.framework); per RFC 5321 a domain with no MX but an A record can still receive mail — advisory flag only, never auto-exclude, skip when offline. Call it a "domain check," not "verification." |
+| 16 | **Subject-line A/B split** | Only after reply detection exists (it's the outcome metric). Present raw counts, never "winners" — 100-recipient samples are anecdotal. Paid-tier candidate. |
+
+### Deliberately skipped — with reasons (put these in the FAQ)
+
+- **Open/click tracking** — structurally impossible without servers, and *on-trend to skip*: 2026 deliverability guidance says disable pixels; SerialMailer and SecureMailMerge monetize the no-tracking stance. Positioning asset, not gap.
+- **List-Unsubscribe headers** — *infeasible* in Apple Mail via AppleScript (stronger and more honest than "skipped"); relevant only at ~5,000+/day bulk volumes our users won't hit.
+- **Spintax** — exists to evade spam filters for pooled bulk senders; our users send authenticated personal mail. Noise.
+- **Drag-and-drop email designer, signup forms, segmentation, autoresponder marketing stack** — Direct Mail's lane; a maintenance tarpit.
+- **Warmup pools, inbox rotation, LinkedIn automation** — cold-email SaaS territory; incompatible with the product's ethics and architecture.
+
+---
+
+## 4. Market Insights
+
+1. **The Mac is underserved right now.** Word-Mac merge requires legacy Outlook and broke in 2025 (v16.109); Mail Merge Toolkit has no Mac version; Microsoft's new merge (GA ~Sept 2026) is Windows/web + business-cloud only; Pages can't email its output. *"Word mail merge broken on Mac" and "Pages can't email the merge" are the two search-intent wedges to own.*
+2. **Tracking has split the market — and the no-tracking side is winning culturally.** Ship the privacy-safe substitutes (send log, reply detection) and the story is complete.
+3. **Pricing:** Mac buyers in this niche expect **$40–60 one-time** (SerialMailer ~$45, MaxBulk $50–60); SaaS billing complaints are their worst reviews. *But* one-time pricing must fund the perpetual AppleScript-compatibility tax honestly: plan major-version paid upgrades or an optional maintenance tier.
+4. **SecureMailMerge proves the positioning sells** — $10–15/user/mo for a weaker version of our story, on Outlook only. Match its trust artifacts: notarization, the public injection-test story, a scoped no-vendor-servers claim.
+5. **Deliverability anxiety is the category's dominant emotion.** Draft-first + review/exclude + daily caps + jitter is an under-marketed safety story no rival tells.
+6. **Don't chase:** Direct Mail's marketing stack or the cold-email evasion toolkit. The winnable ground is **personal/professional 1:1-at-scale outreach** — recruiters, realtors, lawyers, teachers, small agencies — where the authenticity of the sender's real account *is* the product.
+
+---
+
+## 5. Risk Register (from the adversarial review — read before building)
+
+| Risk | Reality | Mitigation |
+|---|---|---|
+| **New Outlook for Mac has no usable AppleScript** | All "both clients" claims are legacy-Outlook-only today; Microsoft's promised replacement has slipped past Dec 2025. | **Audit which Outlook our integration drives** (first engineering task from this report). Gate every roadmap feature per-client (Mail / legacy Outlook / new Outlook). Say "legacy Outlook" honestly in marketing. Watch for new-Outlook AppleScript arrival; keep a Graph-API fallback in mind. |
+| **AppleScript is a single point of failure** | Apple killed Mail plugins (SmallCubed died overnight); Mail scripting shifts across macOS releases. | Per-macOS-release regression testing (CI already exists — add a scripted smoke test on new OS betas). Budget the annual compatibility tax into pricing. |
+| **Distribution: Mac App Store sandbox forbids our automation** | Mailbox reads (reply detection) and subprocess use exceed MAS entitlements. | Already decided correctly: **Developer ID + notarization**, outside MAS. Fold notarization into the trust story. |
+| **Privacy claim vs. P2/P3 features** | BYO-key AI and DNS checks contradict an absolute "no network" claim. | Scope the claim *now*: "No vendor servers. Optional features that use the network are off by default and disclosed." Ship the language before the features. |
+| **"No vendor can suspend you" is a risk transfer, not immunity** | The user's *own* iCloud/Gmail account can be flagged — a worse failure for them. | Reframe: "no third party polices your sends — which is why daily caps, jitter, and domain checks ship on by default." Turns the liability into the reason the safety features exist. |
+| **HTML in Apple Mail** | Mail's scriptable HTML body has been broken since ~El Capitan. | Already handled honestly (UI warns; HTML full-fidelity = Outlook). Keep saying it in the comparison table before reviewers discover it. |
+
+---
+
+## 6. Verification Items for the Current Build
+
+1. **Which Outlook does our AppleScript actually drive?** Test against new Outlook on a current install; expect failures; document "requires legacy Outlook mode" if so.
+2. **eM Client check** before any "only living tool" marketing headline — qualify to "only tool that sends through your own Apple Mail or Outlook" if needed.
+3. Re-confirm HTML behavior end-to-end in both clients (our UI warning is believed correct; verify on macOS 26/Tahoe-era Mail).
+
+---
+
+*Research basis: Direct Mail (e3), SerialMailer 8, MaxBulk Mailer, SmallCubed MailSuite (dead), Apple Pages/Mail built-ins, YAMM, GMass, Mailmeteor, Mergo, Streak, Word mail merge (Mac+Win), Mail Merge Toolkit, SecureMailMerge, new Outlook merge (pilot), Copilot, Lemlist, Mailshake, Woodpecker, Instantly, Apollo, Thunderbird Mail Merge, mailmerge CLI, MailMaven, eM Client (flagged for follow-up), plus 2025–26 user-demand trends from Reddit/MacRumors/review sites. Source URLs preserved in the raw research data.*
