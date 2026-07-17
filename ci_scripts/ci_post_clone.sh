@@ -1,1 +1,3 @@
-#!/bin/sh\nbrew install xcodegen\nxcodegen generate
+#!/bin/sh
+brew install xcodegen
+xcodegen generate
