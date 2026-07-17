@@ -22,11 +22,18 @@
 set -e
 
 TEAM="${1:-${DEVELOPMENT_TEAM:-}}"
-if [ -z "$TEAM" ]; then
-  echo "error: pass your 10-character Apple Developer Team ID:" >&2
-  echo "  ./Tools/upload-appstore.sh TEAMID" >&2
+if [ -z "$TEAM" ] || [ "$TEAM" = "TEAMID" ]; then
+  echo "error: pass your REAL 10-character Apple Developer Team ID (not the word TEAMID)." >&2
+  echo "  Find it: Xcode > Settings > Accounts > click your team - the ID is shown there," >&2
+  echo "  or developer.apple.com > Membership. It looks like A1B2C3D4E5." >&2
+  echo "  Then run:  ./Tools/upload-appstore.sh A1B2C3D4E5" >&2
   exit 1
 fi
+case "$TEAM" in
+  *[!A-Z0-9]*|??????????*?|?|??|???|????|?????|??????|???????|????????|?????????)
+    echo "error: '$TEAM' doesn't look like a Team ID (10 uppercase letters/digits, e.g. A1B2C3D4E5)." >&2
+    exit 1;;
+esac
 if [ "$(uname)" != "Darwin" ]; then
   echo "error: this script needs a Mac with Xcode." >&2
   exit 1
@@ -57,25 +64,38 @@ cat > "$EXPORT_PLIST" <<EOF
 </plist>
 EOF
 
+# Note: xcodebuild output goes to a log file and the exit code is checked
+# directly — piping to tail would swallow failures under plain sh (no
+# pipefail), which once made this script print "uploaded" after a failed
+# archive.
 archive_and_upload() {
     scheme="$1"; dest="$2"
     archive="$BUILD_DIR/$scheme.xcarchive"
+    log="$BUILD_DIR/$scheme.log"
     echo ""
-    echo "==> Archiving $scheme"
-    xcodebuild archive \
+    echo "==> Archiving $scheme (log: $log)"
+    if ! xcodebuild archive \
         -scheme "$scheme" \
         -destination "$dest" \
         -archivePath "$archive" \
         DEVELOPMENT_TEAM="$TEAM" \
         -allowProvisioningUpdates \
-        | tail -5
+        > "$log" 2>&1; then
+        echo "error: archiving $scheme FAILED. Last 25 log lines:" >&2
+        tail -25 "$log" >&2
+        exit 1
+    fi
     echo "==> Uploading $scheme to App Store Connect"
-    xcodebuild -exportArchive \
+    if ! xcodebuild -exportArchive \
         -archivePath "$archive" \
         -exportOptionsPlist "$EXPORT_PLIST" \
         -allowProvisioningUpdates \
-        | tail -15
-    echo "==> $scheme uploaded."
+        >> "$log" 2>&1; then
+        echo "error: uploading $scheme FAILED. Last 25 log lines:" >&2
+        tail -25 "$log" >&2
+        exit 1
+    fi
+    echo "==> $scheme uploaded successfully."
 }
 
 archive_and_upload "HighRise-MAS"   "generic/platform=macOS"
