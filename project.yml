@@ -24,7 +24,10 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    # Apple already has Build 42 for version 1.0 on the App Store Connect
+    # record (an unsandboxed upload, rejected with ITMS-90296) — every new
+    # upload must use a higher build number, so bump this before archiving.
+    CURRENT_PROJECT_VERSION: "43"
     CODE_SIGN_STYLE: Automatic
     # Set your signing team here (or in Xcode) to run a signed build.
     DEVELOPMENT_TEAM: ""
