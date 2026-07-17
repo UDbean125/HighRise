@@ -36,7 +36,7 @@ targets:
       - path: HighRise
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.bryansnotes.highrise
+        PRODUCT_BUNDLE_IDENTIFIER: com.hensolutions.HighRise-G2
         PRODUCT_NAME: HighRise
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_FILE: HighRise/Info.plist
