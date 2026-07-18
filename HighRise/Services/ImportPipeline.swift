@@ -61,19 +61,31 @@ enum ImportPipeline {
         let (contacts, _) = CSVParser.contacts(from: parsedTable, emailHeader: emailColumn)
         let skippedRows = CSVParser.skippedRows(from: parsedTable, emailHeader: emailColumn)
 
-        let skipped = max(0, parsedTable.rows.count - contacts.count)
-        var summary = "Imported \(contacts.count) contact\(contacts.count == 1 ? "" : "s") from \(sourceLabel)"
-        if let emailColumn { summary += " · email column: “\(emailColumn)”" }
-        if skipped > 0 { summary += " · \(skipped) row\(skipped == 1 ? "" : "s") skipped (no email)" }
-        if cleanupReport.totalFixes > 0 {
-            summary += " · \(cleanupReport.totalFixes) value\(cleanupReport.totalFixes == 1 ? "" : "s") auto-cleaned"
-        }
+        let summary = Self.summary(sourceLabel: sourceLabel, contacts: contacts.count,
+                                   tableRows: parsedTable.rows.count, emailColumn: emailColumn,
+                                   cleanupFixes: cleanupReport.totalFixes)
 
         return Result(importedHeaders: importedHeaders, attachmentColumn: attachmentColumn,
                       emailColumn: emailColumn, cleanupReport: cleanupReport,
                       cleanupSuggestions: cleanupSuggestions, fillProposals: fillProposals,
                       parsedTable: parsedTable,
                       contacts: contacts, skippedRows: skippedRows, importSummary: summary)
+    }
+
+    /// The one-line import summary shown above the preview. Extracted so the
+    /// coordinator can rebuild it when the user re-picks the email column —
+    /// the summary must always name the column actually in use, not the one
+    /// detected at import time.
+    static func summary(sourceLabel: String, contacts: Int, tableRows: Int,
+                        emailColumn: String?, cleanupFixes: Int) -> String {
+        let skipped = max(0, tableRows - contacts)
+        var summary = "Imported \(contacts) contact\(contacts == 1 ? "" : "s") from \(sourceLabel)"
+        if let emailColumn { summary += " · email column: “\(emailColumn)”" }
+        if skipped > 0 { summary += " · \(skipped) row\(skipped == 1 ? "" : "s") skipped (no email)" }
+        if cleanupFixes > 0 {
+            summary += " · \(cleanupFixes) value\(cleanupFixes == 1 ? "" : "s") auto-cleaned"
+        }
+        return summary
     }
 
     /// Guesses an attachment column from the headers (a column named

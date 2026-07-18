@@ -272,9 +272,9 @@ struct TemplateEditorView: View {
                                               : "First recipient in your list") {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 10) {
-                    Avatar(name: preview.contact.displayName)
+                    Avatar(name: coordinator.displayName(for: preview.contact))
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(preview.contact.displayName).font(.subheadline.weight(.semibold))
+                        Text(coordinator.displayName(for: preview.contact)).font(.subheadline.weight(.semibold))
                         Text(preview.contact.email).font(.caption).foregroundStyle(.secondary)
                     }
                 }

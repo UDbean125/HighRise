@@ -117,6 +117,10 @@ targets:
       - path: HighRise/Services/ImportPipeline.swift
       - path: HighRise/Services/ContactDataFiller.swift
       - path: HighRise/Services/NameInference.swift
+      - path: HighRise/Services/EnrichmentProvider.swift
+      - path: HighRise/Services/ApolloEnrichmentProvider.swift
+      - path: HighRise/Services/EnrichmentEngine.swift
+      - path: HighRise/Services/EnrichmentKeyStore.swift
       - path: HighRise/Services/MarkdownToHTML.swift
       - path: HighRise/Services/Greeting.swift
       - path: HighRise/Services/NextStep.swift

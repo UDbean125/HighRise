@@ -6,6 +6,11 @@
     <true/>
     <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
+    <!-- Outbound HTTPS for the opt-in "Find & Fill Online" enrichment
+         (Apollo API). The Developer ID build is unsandboxed and needs no
+         equivalent. -->
+    <key>com.apple.security.network.client</key>
+    <true/>
     <key>com.apple.security.scripting-targets</key>
     <dict>
         <key>com.apple.mail</key>

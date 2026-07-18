@@ -105,7 +105,7 @@ struct SendView: View {
                 }
                 if ready > 0 {
                     Label {
-                        Text(RecipientPreview.summary(coordinator.sendablePreviews.map(\.contact.displayName)))
+                        Text(RecipientPreview.summary(coordinator.sendablePreviews.map { coordinator.displayName(for: $0.contact) }))
                             .font(.callout).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     } icon: {
@@ -673,7 +673,7 @@ struct SendView: View {
                 set: { coordinator.testSampleID = $0 }
             )) {
                 ForEach(coordinator.sendablePreviews) { preview in
-                    Text("\(preview.contact.displayName) · \(preview.contact.email)")
+                    Text("\(coordinator.displayName(for: preview.contact)) · \(preview.contact.email)")
                         .tag(Optional(preview.id))
                 }
             }
@@ -795,7 +795,7 @@ struct SendView: View {
                 HStack {
                     Image(systemName: icon(for: outcome.status))
                         .foregroundStyle(color(for: outcome.status))
-                    Text(outcome.contact.displayName)
+                    Text(coordinator.displayName(for: outcome.contact))
                     Spacer()
                     Text(label(for: outcome.status)).font(.callout).foregroundStyle(.secondary)
                 }

@@ -24,6 +24,24 @@ struct ContentView: View {
             }
         }
         .navigationTitle("HighRise")
+        .toolbar {
+            // A title-bar Back on every screen (the footer has one too, but
+            // this one is always in the same place and impossible to miss).
+            // Home is the hub — nothing to go back to.
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    if let prev = HighRiseCoordinator.Stage(rawValue: coordinator.stage.rawValue - 1) {
+                        coordinator.stage = prev
+                    }
+                } label: {
+                    Label("Back", systemImage: "chevron.left")
+                }
+                .disabled(coordinator.stage == .home)
+                .help(coordinator.stage == .home ? "You're on the Home dashboard"
+                                                 : "Back to the previous step (⌘←)")
+                .keyboardShortcut(.leftArrow, modifiers: .command)
+            }
+        }
         .tint(Brand.accent)
         // The interactive walkthrough spotlights real controls; it reads their
         // frames from the whole window via anchor preferences.
