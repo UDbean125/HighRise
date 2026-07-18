@@ -24,13 +24,16 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "1.0"
-    # Apple already has Builds 42, 46, and 49 for version 1.0 on the App
-    # Store Connect record (all unsandboxed uploads from the plain `HighRise`
-    # scheme, each rejected with ITMS-90296 — App Store uploads must archive
-    # the sandboxed `HighRise-MAS` scheme instead; the schemes' archive
-    # actions below now label and warn about this in Organizer). Every new
-    # upload needs a higher build number, so bump this before archiving.
-    CURRENT_PROJECT_VERSION: "50"
+    # Apple already has Builds 42, 46, 49, and 51 for version 1.0 on the App
+    # Store Connect record — all unsandboxed ITMS-90296 rejections. 42/46/49
+    # were the plain `HighRise` scheme; 51 came from the STALE external-drive
+    # project (which has no HighRise-MAS target at all — never archive from
+    # that checkout). App Store uploads must archive the sandboxed
+    # `HighRise-MAS` scheme from THIS project; the schemes' archive actions
+    # below label and warn about this in Organizer. Every new upload needs a
+    # higher build number (50 was generated but never uploaded), so bump this
+    # before archiving.
+    CURRENT_PROJECT_VERSION: "52"
     CODE_SIGN_STYLE: Automatic
     # Set your signing team here (or in Xcode) to run a signed build.
     DEVELOPMENT_TEAM: ""
