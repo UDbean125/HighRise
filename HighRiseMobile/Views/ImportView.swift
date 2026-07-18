@@ -88,6 +88,17 @@ struct ImportView: View {
             }
             .buttonStyle(.borderedProminent)
 
+#if DEBUG
+            // Dev/screenshot convenience only — DEBUG builds never ship.
+            Button("Load Sample List") {
+                coordinator.template.subject = SampleList.templateSubject
+                coordinator.template.body = SampleList.templateBody
+                coordinator.importCSV(data: Data(SampleList.csv.utf8),
+                                      sourceLabel: "sample-list.csv")
+            }
+            .buttonStyle(.bordered)
+#endif
+
             if !coordinator.contacts.isEmpty {
                 NavigationLink("Next: Write Template") {
                     TemplateEditorView()
