@@ -24,10 +24,12 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "1.0"
-    # Apple already has Build 42 for version 1.0 on the App Store Connect
-    # record (an unsandboxed upload, rejected with ITMS-90296) — every new
-    # upload must use a higher build number, so bump this before archiving.
-    CURRENT_PROJECT_VERSION: "43"
+    # Apple already has Builds 42 and 46 for version 1.0 on the App Store
+    # Connect record (both unsandboxed uploads from the plain `HighRise`
+    # scheme, rejected with ITMS-90296 — App Store uploads must archive the
+    # sandboxed `HighRise-MAS` scheme instead). Every new upload needs a
+    # higher build number, so bump this before archiving.
+    CURRENT_PROJECT_VERSION: "47"
     CODE_SIGN_STYLE: Automatic
     # Set your signing team here (or in Xcode) to run a signed build.
     DEVELOPMENT_TEAM: ""
