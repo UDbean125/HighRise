@@ -42,6 +42,18 @@ Built to the Bryan's Notes stack rules: Swift + SwiftUI, Apple SDK only,
    address. Everything is worked out from the list itself — nothing is looked
    up online — only *blank* cells are ever written, and each fill is opt-in
    per proposal (or one "Fill All").
+
+   When the list needs data that *isn't* in it (no email addresses at all, say),
+   **Find & Fill Online** is the one opt-in exception to the app's
+   offline-only rule: it looks up missing emails, names, titles, and websites
+   through **Apollo.io** using your own Apollo API key (stored in the
+   Keychain). Nothing is sent anywhere until you click Search; results come
+   back as suggestions you review and approve one by one; a valid email is
+   never overwritten and your file on disk is never touched. Column pickers on
+   the same screen let you re-map which columns hold the **email**, the
+   **name** (how recipients are labeled in previews), and per-recipient
+   **attachments** — the preview table's titles and data follow your picks
+   live.
 3. **Review** every personalized message. Recipients with missing data or an
    invalid address are flagged and excluded automatically.
 4. **Send** — *draft-first by default*: each message is created in your client's
@@ -237,6 +249,9 @@ Services/
   EmailValidator.swift     Pragmatic address validation
   ImportCleaner.swift      Auto-fixes + suggested repairs for messy imports
   ContactDataFiller.swift  Opt-in fills for missing data (names/company/website inferred from the list itself)
+  EnrichmentEngine.swift   Opt-in online lookups (Apollo.io, user's own key) → reviewable fill suggestions
+  ApolloEnrichmentProvider.swift  Apollo REST client behind the EnrichmentProvider protocol
+  EnrichmentKeyStore.swift Keychain storage for the enrichment API key
   TemplateMergeEngine.swift  Pure {{Field}} substitution + HTML escaping
   AppleScriptBuilder.swift   Builds escaped AppleScript per client/mode
   MailSender.swift         Runs AppleScript (NSAppleScript), per-message delivery

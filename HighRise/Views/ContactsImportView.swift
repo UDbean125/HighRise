@@ -10,6 +10,7 @@ struct ContactsImportView: View {
     @State private var pastedText = ""
     @State private var showPaste = false
     @State private var showDoNotContact = false
+    @State private var showEnrichment = false
 
     var body: some View {
         ScrollView {
@@ -75,6 +76,7 @@ struct ContactsImportView: View {
                 columnsCard
                 cleanupCard
                 fillCard
+                enrichmentCard
                 skippedRowsCard
                 previewCard
             }
@@ -183,6 +185,32 @@ struct ContactsImportView: View {
                         .help("Apply every fill above, most confident sources first")
                     }
                 }
+            }
+        }
+    }
+
+    /// The doorway to online enrichment — shown whenever any row is missing a
+    /// valid email or has blank name/company/website cells. Everything else
+    /// in the app stays offline; this card is the one opt-in exception and
+    /// says so before anything runs.
+    @ViewBuilder
+    private var enrichmentCard: some View {
+        if coordinator.enrichmentCandidateCount > 0 {
+            SectionCard("Find & fill online", systemImage: "network.badge.shield.half.filled",
+                        subtitle: "Look up missing emails and details with Apollo.io, using your own Apollo account.") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("\(coordinator.enrichmentCandidateCount) row\(coordinator.enrichmentCandidateCount == 1 ? "" : "s") could use help — missing or invalid email, or blank name/company cells. Results are suggestions you review and approve; nothing is sent anywhere until you run the search.")
+                        .font(.callout).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button {
+                        showEnrichment = true
+                    } label: {
+                        Label("Find & Fill Online…", systemImage: "magnifyingglass")
+                    }
+                }
+            }
+            .sheet(isPresented: $showEnrichment) {
+                EnrichmentView().environmentObject(coordinator)
             }
         }
     }
@@ -486,6 +514,7 @@ struct ContactsImportView: View {
                     Divider()
                 }
                 emailColumnPicker
+                nameColumnPicker
                 attachmentColumnPicker
             }
         }
@@ -514,6 +543,26 @@ struct ContactsImportView: View {
         }
     }
 
+    private var nameColumnPicker: some View {
+        HStack {
+            Text("Name column").font(.subheadline).foregroundStyle(.secondary)
+            Picker("Name column", selection: Binding(
+                get: { coordinator.nameColumn ?? "" },
+                set: { coordinator.nameColumn = $0.isEmpty ? nil : $0 }
+            )) {
+                Text("Automatic").tag("")
+                ForEach(coordinator.importedHeaders, id: \.self) { header in
+                    Text(header).tag(header)
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 240)
+            Text("How each recipient is labeled in previews and results.")
+                .font(.callout).foregroundStyle(.secondary)
+            Spacer()
+        }
+    }
+
     private var attachmentColumnPicker: some View {
         HStack {
             Text("Attachment column").font(.subheadline).foregroundStyle(.secondary)
@@ -534,6 +583,15 @@ struct ContactsImportView: View {
         }
     }
 
+    /// Column titles name the mapped source column so re-picking a dropdown is
+    /// visibly reflected up here, not just in the row data.
+    private var nameColumnTitle: String {
+        coordinator.nameColumn.map { "Name — “\($0)”" } ?? "Name"
+    }
+    private var emailColumnTitle: String {
+        coordinator.emailColumn.map { "Email — “\($0)”" } ?? "Email"
+    }
+
     private var summaryAndPreview: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let summary = coordinator.importSummary {
@@ -541,26 +599,48 @@ struct ContactsImportView: View {
                     .foregroundStyle(.green)
                     .font(.callout)
             }
-            Table(coordinator.contacts.prefix(50).map { $0 }) {
-                TableColumn("Name") { contact in
-                    HStack(spacing: 8) {
-                        Avatar(name: contact.displayName, size: 22)
-                        Text(contact.displayName).lineLimit(1)
+            // Two variants because TableColumn builders can't conditionally
+            // include a column — the attachment column only exists once the
+            // user maps one, so its picker visibly does something.
+            if let attachment = coordinator.attachmentColumn {
+                Table(coordinator.contacts.prefix(50).map { $0 }) {
+                    TableColumn(nameColumnTitle) { contact in nameCell(contact) }
+                    TableColumn(emailColumnTitle, value: \.email)
+                    TableColumn("Attachment — “\(attachment)”") { contact in
+                        Text(contact.value(for: attachment) ?? "")
+                            .lineLimit(1)
+                            .foregroundStyle(.secondary)
                     }
+                    TableColumn("Valid") { contact in validCell(contact) }
+                        .width(50)
                 }
-                TableColumn("Email", value: \.email)
-                TableColumn("Valid") { contact in
-                    Image(systemName: EmailValidator.isValid(contact.email) ? "checkmark.circle" : "exclamationmark.triangle")
-                        .foregroundStyle(EmailValidator.isValid(contact.email) ? .green : .orange)
-                        .accessibilityLabel(EmailValidator.isValid(contact.email) ? "Valid email" : "Invalid email")
+                .frame(minHeight: 200, maxHeight: 320)
+            } else {
+                Table(coordinator.contacts.prefix(50).map { $0 }) {
+                    TableColumn(nameColumnTitle) { contact in nameCell(contact) }
+                    TableColumn(emailColumnTitle, value: \.email)
+                    TableColumn("Valid") { contact in validCell(contact) }
+                        .width(50)
                 }
-                .width(50)
+                .frame(minHeight: 200, maxHeight: 320)
             }
-            .frame(minHeight: 200, maxHeight: 320)
             if coordinator.contacts.count > 50 {
                 Text("Showing first 50 of \(coordinator.contacts.count).")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
+    }
+
+    private func nameCell(_ contact: Contact) -> some View {
+        HStack(spacing: 8) {
+            Avatar(name: coordinator.displayName(for: contact), size: 22)
+            Text(coordinator.displayName(for: contact)).lineLimit(1)
+        }
+    }
+
+    private func validCell(_ contact: Contact) -> some View {
+        Image(systemName: EmailValidator.isValid(contact.email) ? "checkmark.circle" : "exclamationmark.triangle")
+            .foregroundStyle(EmailValidator.isValid(contact.email) ? .green : .orange)
+            .accessibilityLabel(EmailValidator.isValid(contact.email) ? "Valid email" : "Invalid email")
     }
 }

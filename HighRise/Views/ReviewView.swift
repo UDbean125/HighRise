@@ -32,7 +32,7 @@ struct ReviewView: View {
                 return false
             }
             guard !searchText.isEmpty else { return true }
-            return preview.contact.displayName.localizedCaseInsensitiveContains(searchText)
+            return coordinator.displayName(for: preview.contact).localizedCaseInsensitiveContains(searchText)
                 || preview.contact.email.localizedCaseInsensitiveContains(searchText)
         }
     }
@@ -209,9 +209,9 @@ struct ReviewView: View {
     /// "who's ready vs held" reads at a glance without opening each one.
     private func recipientRow(_ preview: MergePreview) -> some View {
         HStack(spacing: 10) {
-            Avatar(name: preview.contact.displayName, size: 30)
+            Avatar(name: coordinator.displayName(for: preview.contact), size: 30)
             VStack(alignment: .leading, spacing: 2) {
-                Text(preview.contact.displayName).lineLimit(1)
+                Text(coordinator.displayName(for: preview.contact)).lineLimit(1)
                 Text(preview.contact.email).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 4)
@@ -281,9 +281,9 @@ struct ReviewView: View {
     /// address, and a status pill mirroring the list.
     private func recipientHeader(_ preview: MergePreview) -> some View {
         HStack(spacing: 12) {
-            Avatar(name: preview.contact.displayName, size: 44)
+            Avatar(name: coordinator.displayName(for: preview.contact), size: 44)
             VStack(alignment: .leading, spacing: 2) {
-                Text(preview.contact.displayName).font(.title3.weight(.semibold)).lineLimit(1)
+                Text(coordinator.displayName(for: preview.contact)).font(.title3.weight(.semibold)).lineLimit(1)
                 Text(preview.contact.email).font(.subheadline).foregroundStyle(.secondary)
                     .textSelection(.enabled).lineLimit(1)
             }

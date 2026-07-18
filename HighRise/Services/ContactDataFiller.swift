@@ -385,14 +385,14 @@ enum ContactDataFiller {
 
     // MARK: - Columns
 
-    private static let firstNameKeys: Set<String> = ["firstname", "first", "givenname"]
-    private static let lastNameKeys: Set<String> = ["lastname", "last", "surname", "familyname"]
-    private static let fullNameKeys: Set<String> = ["name", "fullname", "contactname", "contact"]
-    private static let companyKeys: Set<String> = [
+    static let firstNameKeys: Set<String> = ["firstname", "first", "givenname"]
+    static let lastNameKeys: Set<String> = ["lastname", "last", "surname", "familyname"]
+    static let fullNameKeys: Set<String> = ["name", "fullname", "contactname", "contact"]
+    static let companyKeys: Set<String> = [
         "company", "companyname", "organization", "organisation",
         "account", "accountname", "employer", "business", "firm"
     ]
-    private static let websiteKeys: Set<String> = [
+    static let websiteKeys: Set<String> = [
         "website", "web", "url", "site", "companywebsite", "webaddress", "homepage"
     ]
 
@@ -418,11 +418,11 @@ enum ContactDataFiller {
         }
     }
 
-    private static func normalizeKey(_ header: String) -> String {
+    static func normalizeKey(_ header: String) -> String {
         header.lowercased().filter { !$0.isWhitespace && $0 != "_" && $0 != "-" }
     }
 
-    private static func index(matching keys: Set<String>, in headers: [String]) -> Int? {
+    static func index(matching keys: Set<String>, in headers: [String]) -> Int? {
         headers.firstIndex { keys.contains(normalizeKey($0)) }
     }
 

@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 struct ImportView: View {
     @EnvironmentObject var coordinator: MobileCoordinator
     @State private var showingImporter = false
+    @State private var showEnrichment = false
 
     var body: some View {
         VStack(spacing: 16) {
@@ -53,6 +54,17 @@ struct ImportView: View {
                             Text("Optional fills for blank cells, worked out from the list itself — nothing is looked up online, and existing values are never changed. Tap a fill to apply it.")
                         }
                     }
+                    if coordinator.enrichmentCandidateCount > 0 {
+                        Section {
+                            Button {
+                                showEnrichment = true
+                            } label: {
+                                Label("Find & Fill Online…", systemImage: "magnifyingglass")
+                            }
+                        } footer: {
+                            Text("\(coordinator.enrichmentCandidateCount) row\(coordinator.enrichmentCandidateCount == 1 ? "" : "s") could use help — look up missing emails and details with Apollo.io using your own account.")
+                        }
+                    }
                     Section("Recipients (\(coordinator.contacts.count))") {
                         ForEach(coordinator.contacts) { contact in
                             VStack(alignment: .leading) {
@@ -85,6 +97,9 @@ struct ImportView: View {
         }
         .padding(.bottom)
         .navigationTitle("Import")
+        .sheet(isPresented: $showEnrichment) {
+            EnrichmentSheet().environmentObject(coordinator)
+        }
         .fileImporter(
             isPresented: $showingImporter,
             allowedContentTypes: [.commaSeparatedText, .plainText]

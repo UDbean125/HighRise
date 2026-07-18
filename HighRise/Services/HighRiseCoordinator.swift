@@ -82,6 +82,28 @@ final class HighRiseCoordinator: ObservableObject {
     @Published private(set) var importSummary: String?
     @Published var importError: String?
 
+    /// User-chosen column for contact display names, or nil for the automatic
+    /// pick (`Contact.displayName`'s name-like/company/email fallback chain).
+    /// Display-only — it never affects merging or sending.
+    @Published var nameColumn: String?
+
+    /// The label of the current import's source ("Leads.xlsx", "pasted
+    /// text"…), kept so the summary line can be rebuilt when the email column
+    /// is re-picked after import.
+    private var importSourceLabel: String?
+
+    /// The display name for a contact, honoring the user's Name column choice
+    /// when one is set (and non-blank for that row) before falling back to
+    /// the automatic pick.
+    func displayName(for contact: Contact) -> String {
+        if let nameColumn,
+           let chosen = contact.value(for: nameColumn)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !chosen.isEmpty {
+            return chosen
+        }
+        return contact.displayName
+    }
+
     /// True while a fresh import (file read + clean + contact-building) is
     /// running in the background — a real CRM export can be 100,000+ rows,
     /// so this can take several seconds. The screen shows a progress state
@@ -438,8 +460,10 @@ final class HighRiseCoordinator: ObservableObject {
     /// have `isImporting` set; this only owns the compute-and-apply step.
     func ingest(_ table: RecipientTable, sourceLabel: String) async {
         rawTable = table
+        importSourceLabel = sourceLabel
         appliedSuggestions = []
         appliedFills = []
+        nameColumn = nil
         cleanupEnabled = true
         importError = nil
 
@@ -467,6 +491,8 @@ final class HighRiseCoordinator: ObservableObject {
     func reportImportFailure(_ message: String) {
         importError = message
         importSummary = nil
+        importSourceLabel = nil
+        nameColumn = nil
         contacts = []
         importedHeaders = []
         parsedTable = nil
@@ -476,6 +502,9 @@ final class HighRiseCoordinator: ObservableObject {
         appliedSuggestions = []
         fillProposals = []
         appliedFills = []
+        cancelEnrichment()
+        enrichmentFills = []
+        enrichmentSummary = nil
         skippedRows = []
         clearWorkbookSelection()
         Log.csv.error("Import failed: \(message, privacy: .public)")
@@ -662,6 +691,15 @@ final class HighRiseCoordinator: ObservableObject {
         let (parsedContacts, _) = CSVParser.contacts(from: effectiveTable, emailHeader: emailColumn)
         contacts = parsedContacts
         skippedRows = CSVParser.skippedRows(from: effectiveTable, emailHeader: emailColumn)
+        // Keep the summary line honest after a re-pick — it names the email
+        // column in use, so it can't go stale when that changes.
+        if let importSourceLabel {
+            importSummary = ImportPipeline.summary(
+                sourceLabel: importSourceLabel, contacts: contacts.count,
+                tableRows: effectiveTable.rows.count,
+                emailColumn: emailColumn ?? CSVParser.detectEmailColumn(in: effectiveTable),
+                cleanupFixes: cleanupReport.totalFixes)
+        }
     }
 
     /// Applies one suggested repair (domain typo, casing, name order) to the
@@ -692,6 +730,88 @@ final class HighRiseCoordinator: ObservableObject {
         appliedFills.append(contentsOf: fillProposals)
         remapContacts()
         Log.csv.info("Applied all missing-data fill proposals")
+    }
+
+    // MARK: - Online enrichment (Find & Fill Online)
+
+    /// Proposed cell writes from the last online enrichment run, awaiting the
+    /// user's review. Nothing here touches the list until
+    /// `applyEnrichmentFills` is called with the fills the user accepted.
+    @Published private(set) var enrichmentFills: [EnrichmentEngine.CellFill] = []
+    /// One-line outcome of the last run ("Queried 42 rows · 31 findings…").
+    @Published private(set) var enrichmentSummary: String?
+    @Published private(set) var isEnriching = false
+    /// 0…1 across the rows being queried.
+    @Published private(set) var enrichmentProgress: Double = 0
+    @Published var enrichmentError: String?
+    private var enrichmentTask: Task<Void, Never>?
+
+    /// How many rows an online run would try to help (missing/invalid email
+    /// or blank name/company/website cells) — shown before the user commits.
+    var enrichmentCandidateCount: Int {
+        guard let table = parsedTable ?? rawTable else { return 0 }
+        let emailIndex = EnrichmentEngine.emailColumnIndex(in: table, named: emailColumn)
+        return EnrichmentEngine.rowsNeedingHelp(table, emailIndex: emailIndex).count
+    }
+
+    /// Runs the given provider over the current list. Explicitly user-triggered
+    /// — this is the only place recipient data leaves the machine, and the
+    /// results only become proposals, never silent writes.
+    func findAndFillOnline(provider: EnrichmentProvider) {
+        guard let table = parsedTable ?? rawTable, !isEnriching else { return }
+        let email = emailColumn
+        isEnriching = true
+        enrichmentError = nil
+        enrichmentFills = []
+        enrichmentSummary = nil
+        enrichmentProgress = 0
+
+        enrichmentTask = Task { [weak self] in
+            do {
+                let result = try await EnrichmentEngine.run(
+                    table: table, emailColumn: email, provider: provider,
+                    onProgress: { done, total in
+                        Task { @MainActor [weak self] in
+                            self?.enrichmentProgress = total > 0 ? Double(done) / Double(total) : 0
+                        }
+                    })
+                guard let self, !Task.isCancelled else { return }
+                self.enrichmentFills = result.fills
+                var summary = "Queried \(result.queried) row\(result.queried == 1 ? "" : "s") · \(result.fills.count) suggested fill\(result.fills.count == 1 ? "" : "s")"
+                if result.noMatch > 0 { summary += " · no match for \(result.noMatch)" }
+                if result.skippedUnaskable > 0 { summary += " · \(result.skippedUnaskable) row\(result.skippedUnaskable == 1 ? "" : "s") skipped" }
+                self.enrichmentSummary = summary
+                Log.csv.info("Enrichment run: \(summary, privacy: .public)")
+            } catch is CancellationError {
+                // User cancelled — leave whatever partial state was published.
+            } catch {
+                self?.enrichmentError = error.localizedDescription
+                Log.csv.error("Enrichment failed: \(error.localizedDescription, privacy: .public)")
+            }
+            self?.isEnriching = false
+        }
+    }
+
+    func cancelEnrichment() {
+        enrichmentTask?.cancel()
+        enrichmentTask = nil
+        isEnriching = false
+    }
+
+    /// Applies the accepted fills and adopts the result as the list's new
+    /// baseline (the user's file on disk is never touched). Cleanup and the
+    /// offline fill proposals re-derive against the updated data.
+    func applyEnrichmentFills(_ fills: [EnrichmentEngine.CellFill]) {
+        guard !fills.isEmpty, let table = parsedTable ?? rawTable else { return }
+        let (updated, applied) = EnrichmentEngine.apply(fills, to: table)
+        guard applied > 0 else { return }
+        rawTable = updated
+        appliedSuggestions = []
+        appliedFills = []
+        remapContacts()
+        enrichmentFills = []
+        enrichmentSummary = "Applied \(applied) fill\(applied == 1 ? "" : "s") to the list."
+        Log.csv.info("Applied \(applied, privacy: .public) online enrichment fill(s)")
     }
 
     // MARK: - Name-inference repair
@@ -1009,6 +1129,8 @@ final class HighRiseCoordinator: ObservableObject {
         contacts = []
         importedHeaders = []
         importSummary = nil
+        importSourceLabel = nil
+        nameColumn = nil
         importError = nil
         parsedTable = nil
         rawTable = nil
@@ -1017,6 +1139,10 @@ final class HighRiseCoordinator: ObservableObject {
         appliedSuggestions = []
         fillProposals = []
         appliedFills = []
+        cancelEnrichment()
+        enrichmentFills = []
+        enrichmentSummary = nil
+        enrichmentError = nil
         emailColumn = nil
         attachmentColumn = nil
         clearWorkbookSelection()

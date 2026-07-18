@@ -59,7 +59,8 @@ drives Mail/Outlook — don't exist on iOS. It reuses the shared Foundation-only
 import/merge files (`Contact`, `EmailTemplate`, `RecipientTable`, `CSVParser`,
 `EmailValidator`, `TemplateMergeEngine`, `MergeValueFormatter`,
 `ImportPipeline`, `ImportCleaner`, `ContactDataFiller`, `NameInference`,
-`DuplicateDetector`, `MarkdownToHTML`,
+`EnrichmentProvider`, `ApolloEnrichmentProvider`, `EnrichmentEngine`,
+`EnrichmentKeyStore`, `DuplicateDetector`, `MarkdownToHTML`,
 `FieldSynonyms`, `TemplateVariant`, `Greeting`, `NextStep` — each listed
 individually as a source under both targets in `project.yml`, not moved into
 a package) and hands each recipient to `MFMailComposeViewController` instead:
@@ -149,6 +150,16 @@ skip as a bug.
   Apple's App Store Connect pipeline supports extracting from `.icon` bundles —
   don't delete it, just don't wire it back in without re-confirming that support
   exists.
+- **Online enrichment ("Find & Fill Online")** is the app's single, deliberate
+  exception to "nothing leaves the machine": `EnrichmentEngine` +
+  `ApolloEnrichmentProvider` (user's own Apollo API key, Keychain-stored via
+  `EnrichmentKeyStore`) look up missing emails/names/titles/websites, strictly
+  user-triggered, results are reviewable proposals, valid emails are never
+  overwritten. Still zero third-party deps (plain URLSession). The MAS
+  sandbox variant carries `com.apple.security.network.client` for this. A
+  future web-search or other-vendor source should conform to
+  `EnrichmentProvider` rather than adding a parallel path. Do NOT scrape
+  LinkedIn directly (ToS); Apollo is the sanctioned route to that data.
 - AppleScript string escaping (`AppleScriptBuilder.stringLiteral`) is the app's
   security boundary — keep it unit-tested.
 - Never leak a raw `{{placeholder}}` to a recipient; merge blocks unresolved rows.

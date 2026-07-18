@@ -20,6 +20,9 @@ final class MobileCoordinator: ObservableObject {
     /// the same pipeline pass the Mac app uses.
     private var rawTable: RecipientTable?
     private var sourceLabel = ""
+    /// The cleaned table the pipeline last produced — what enrichment runs
+    /// against, so its row indices match what the user sees.
+    private var currentTable: RecipientTable?
 
     /// Fill proposals the user accepted, replayed in order on each re-derive.
     private var appliedFills: [ContactDataFiller.Proposal] = []
@@ -96,7 +99,74 @@ final class MobileCoordinator: ObservableObject {
         contacts = result.contacts
         importSummary = result.importSummary
         fillProposals = result.fillProposals
+        currentTable = result.parsedTable
         refreshPreviews()
+    }
+
+    // MARK: - Online enrichment (Find & Fill Online)
+
+    /// Same contract as the macOS coordinator: results are proposals the user
+    /// reviews; nothing is sent anywhere except from this explicit flow.
+    @Published private(set) var enrichmentFills: [EnrichmentEngine.CellFill] = []
+    @Published private(set) var enrichmentSummary: String?
+    @Published private(set) var isEnriching = false
+    @Published private(set) var enrichmentProgress: Double = 0
+    @Published var enrichmentError: String?
+    private var enrichmentTask: Task<Void, Never>?
+
+    var enrichmentCandidateCount: Int {
+        guard let table = currentTable ?? rawTable else { return 0 }
+        let emailIndex = EnrichmentEngine.emailColumnIndex(in: table, named: nil)
+        return EnrichmentEngine.rowsNeedingHelp(table, emailIndex: emailIndex).count
+    }
+
+    func findAndFillOnline(provider: EnrichmentProvider) {
+        guard let table = currentTable ?? rawTable, !isEnriching else { return }
+        isEnriching = true
+        enrichmentError = nil
+        enrichmentFills = []
+        enrichmentSummary = nil
+        enrichmentProgress = 0
+
+        enrichmentTask = Task { [weak self] in
+            do {
+                let result = try await EnrichmentEngine.run(
+                    table: table, emailColumn: nil, provider: provider,
+                    onProgress: { done, total in
+                        Task { @MainActor [weak self] in
+                            self?.enrichmentProgress = total > 0 ? Double(done) / Double(total) : 0
+                        }
+                    })
+                guard let self, !Task.isCancelled else { return }
+                self.enrichmentFills = result.fills
+                var summary = "Queried \(result.queried) row\(result.queried == 1 ? "" : "s") · \(result.fills.count) suggested fill\(result.fills.count == 1 ? "" : "s")"
+                if result.noMatch > 0 { summary += " · no match for \(result.noMatch)" }
+                self.enrichmentSummary = summary
+            } catch is CancellationError {
+            } catch {
+                self?.enrichmentError = error.localizedDescription
+            }
+            self?.isEnriching = false
+        }
+    }
+
+    func cancelEnrichment() {
+        enrichmentTask?.cancel()
+        enrichmentTask = nil
+        isEnriching = false
+    }
+
+    /// Applies accepted fills and adopts the result as the new baseline, then
+    /// re-derives contacts and the offline fill proposals against it.
+    func applyEnrichmentFills(_ fills: [EnrichmentEngine.CellFill]) {
+        guard !fills.isEmpty, let table = currentTable ?? rawTable else { return }
+        let (updated, applied) = EnrichmentEngine.apply(fills, to: table)
+        guard applied > 0 else { return }
+        rawTable = updated
+        appliedFills = []
+        rerunPipeline()
+        enrichmentFills = []
+        enrichmentSummary = "Applied \(applied) fill\(applied == 1 ? "" : "s") to the list."
     }
 
     func refreshPreviews() {
