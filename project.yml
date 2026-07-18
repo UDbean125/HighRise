@@ -31,9 +31,12 @@ settings:
     # that checkout). App Store uploads must archive the sandboxed
     # `HighRise-MAS` scheme from THIS project; the schemes' archive actions
     # below label and warn about this in Organizer. Every new upload needs a
-    # higher build number (50 was generated but never uploaded), so bump this
-    # before archiving.
-    CURRENT_PROJECT_VERSION: "52"
+    # higher build number (Xcode Cloud numbers its own builds — its counter is
+    # past 53 — so local archives start at 54). Bump this before local
+    # archiving. NOTE: App Store submissions must be archived with a RELEASE
+    # Xcode (Cloud runs 26.6); the local Xcode 27 beta gets "beta version of
+    # Xcode" rejections at Add-for-Review.
+    CURRENT_PROJECT_VERSION: "54"
     CODE_SIGN_STYLE: Automatic
     # Set your signing team here (or in Xcode) to run a signed build.
     DEVELOPMENT_TEAM: ""
