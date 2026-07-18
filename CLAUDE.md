@@ -178,9 +178,12 @@ times): proceed autonomously through the full build loop for this project
 without pausing for per-step confirmation — reading/searching the repo, editing
 code, `xcodegen generate`, `swift`/`xcodebuild`, committing, pushing to the
 feature branch, and opening/updating draft PRs. Keep moving through
-implement → test → push → draft PR → confirm CI → build the next thing on merge,
-and only stop to ask when something is genuinely destructive, irreversible,
-outside this repo, or a real design fork. Do not re-ask for permission to run
+implement → test → push → PR → confirm CI → **squash & merge the PR yourself**
+(owner-delegated 2026-07-18: merge only after CI is green, squash & merge,
+delete the remote branch, then reset the local branch on the new `main` so
+squashed commits never ghost into the next PR's diff), and only stop to ask
+when something is genuinely destructive, irreversible, outside this repo, or
+a real design fork. Do not re-ask for permission to run
 this ordinary dev work — it is granted.
 
 **Pre-approved commands/tools (ALWAYS ALLOW — owner-confirmed):**
