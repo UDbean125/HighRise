@@ -58,7 +58,8 @@ A second XcodeGen target, `HighRiseMobile` (platform iOS, scheme
 drives Mail/Outlook — don't exist on iOS. It reuses the shared Foundation-only
 import/merge files (`Contact`, `EmailTemplate`, `RecipientTable`, `CSVParser`,
 `EmailValidator`, `TemplateMergeEngine`, `MergeValueFormatter`,
-`ImportPipeline`, `ImportCleaner`, `DuplicateDetector`, `MarkdownToHTML`,
+`ImportPipeline`, `ImportCleaner`, `ContactDataFiller`, `NameInference`,
+`DuplicateDetector`, `MarkdownToHTML`,
 `FieldSynonyms`, `TemplateVariant`, `Greeting`, `NextStep` — each listed
 individually as a source under both targets in `project.yml`, not moved into
 a package) and hands each recipient to `MFMailComposeViewController` instead:

@@ -48,4 +48,21 @@ struct NameInferenceTests {
         #expect(NameInference.isCommonName("Jordan"))
         #expect(!NameInference.isCommonName("Zzyzx"))
     }
+
+    @Test("first.last style addresses yield the capitalized last name")
+    func lastNameFromDottedAddress() {
+        #expect(NameInference.suggestedLastName(from: "john.smith@acme.com") == "Smith")
+        #expect(NameInference.suggestedLastName(from: "ada_lovelace@x.io") == "Lovelace")
+        #expect(NameInference.suggestedLastName(from: "  MARIA.Garcia+tag@X.COM ") == "Garcia")
+    }
+
+    @Test("Last-name inference rejects ambiguous or role local parts", arguments: [
+        "jsmith@acme.com",        // single token — could be j-smith or js-mith
+        "info@acme.com", "sales.team@acme.com", "john.smith2@acme.com",
+        "jordan.jordan@x.com",    // repeated token — likely not first.last
+        "not-an-email", ""
+    ])
+    func lastNameRejections(address: String) {
+        #expect(NameInference.suggestedLastName(from: address) == nil)
+    }
 }

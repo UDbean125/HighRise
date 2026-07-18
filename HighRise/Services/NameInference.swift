@@ -59,6 +59,29 @@ enum NameInference {
         return capitalizeName(first)
     }
 
+    /// A suggested last name, or nil when the address doesn't clearly encode
+    /// one. Much stricter than the first-name guess: it requires a two-plus
+    /// token `first.last@` / `first_last@` / `first-last@` local part where
+    /// *both* ends look like name words, so `jsmith@` and `sales.team@` yield
+    /// nothing.
+    static func suggestedLastName(from email: String) -> String? {
+        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard let at = trimmed.firstIndex(of: "@") else { return nil }
+        var local = String(trimmed[..<at])
+        if let plus = local.firstIndex(of: "+") { local = String(local[..<plus]) }
+        guard !local.isEmpty, !roleAddresses.contains(local) else { return nil }
+
+        let tokens = local.split(whereSeparator: { $0 == "." || $0 == "_" || $0 == "-" })
+            .map(String.init)
+        guard tokens.count >= 2,
+              let first = tokens.first, let last = tokens.last,
+              isNameLike(first), !roleAddresses.contains(first),
+              isNameLike(last), !roleAddresses.contains(last),
+              first != last
+        else { return nil }
+        return capitalizeName(last)
+    }
+
     /// Whether a token could plausibly be a given name: alphabetic, 2+ letters,
     /// not all-consonant gibberish. A token in `commonNames` always qualifies.
     private static func isNameLike(_ token: String) -> Bool {

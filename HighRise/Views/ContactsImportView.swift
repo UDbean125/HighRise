@@ -74,6 +74,7 @@ struct ContactsImportView: View {
             if !coordinator.contacts.isEmpty {
                 columnsCard
                 cleanupCard
+                fillCard
                 skippedRowsCard
                 previewCard
             }
@@ -137,6 +138,49 @@ struct ContactsImportView: View {
                         }
                         .buttonStyle(.link)
                         .help("Turn off all cleanup and use the import exactly as it was")
+                    }
+                }
+            }
+        }
+    }
+
+    /// Offers to fill *missing* contact data — blank names inferred from the
+    /// email address or split from a Full Name column, blank companies copied
+    /// from coworkers' rows or guessed from the work domain, and values copied
+    /// between duplicate rows of the same address. Everything is derived from
+    /// the list itself (nothing leaves the Mac), only blank cells are ever
+    /// written, and nothing applies until the user clicks it.
+    @ViewBuilder
+    private var fillCard: some View {
+        let proposals = coordinator.fillProposals
+        if coordinator.cleanupEnabled && !proposals.isEmpty {
+            SectionCard("Fill missing data", systemImage: "person.crop.circle.badge.questionmark",
+                        subtitle: "Optional fills for blank cells, worked out from the list itself — nothing is looked up online, and existing values are never changed.") {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(proposals) { proposal in
+                        HStack(alignment: .firstTextBaseline, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(proposal.title)
+                                    .font(.callout)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                if let example = proposal.examples.first {
+                                    exampleText(example)
+                                }
+                            }
+                            Spacer()
+                            Button("Fill") {
+                                coordinator.applyFillProposal(proposal)
+                            }
+                        }
+                    }
+                    if proposals.count > 1 {
+                        Divider()
+                        Button {
+                            coordinator.applyAllFillProposals()
+                        } label: {
+                            Label("Fill All", systemImage: "wand.and.stars.inverse")
+                        }
+                        .help("Apply every fill above, most confident sources first")
                     }
                 }
             }

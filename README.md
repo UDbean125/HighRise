@@ -32,6 +32,16 @@ Built to the Bryan's Notes stack rules: Swift + SwiftUI, Apple SDK only,
    (`gmial.com`), ALL-CAPS names/companies, `Last, First` name order — are
    *suggested* with counts and examples, applied only when you click. Try it:
    `Examples/messy-recipients.csv`.
+
+   The import screen can also offer to **fill in missing contact data** —
+   blank first/last names inferred from the email address or split out of a
+   Full Name column, a blank Full Name assembled from First + Last, blank
+   companies copied from coworkers' rows on the same work domain (or guessed
+   from the domain itself, `acme-corp.com` → *Acme Corp*), blank websites from
+   the work domain, and values copied between duplicate rows of the same
+   address. Everything is worked out from the list itself — nothing is looked
+   up online — only *blank* cells are ever written, and each fill is opt-in
+   per proposal (or one "Fill All").
 3. **Review** every personalized message. Recipients with missing data or an
    invalid address are flagged and excluded automatically.
 4. **Send** — *draft-first by default*: each message is created in your client's
@@ -226,6 +236,7 @@ Services/
   ZipEntryReader.swift     Extracts one entry from a zip via /usr/bin/unzip
   EmailValidator.swift     Pragmatic address validation
   ImportCleaner.swift      Auto-fixes + suggested repairs for messy imports
+  ContactDataFiller.swift  Opt-in fills for missing data (names/company/website inferred from the list itself)
   TemplateMergeEngine.swift  Pure {{Field}} substitution + HTML escaping
   AppleScriptBuilder.swift   Builds escaped AppleScript per client/mode
   MailSender.swift         Runs AppleScript (NSAppleScript), per-message delivery

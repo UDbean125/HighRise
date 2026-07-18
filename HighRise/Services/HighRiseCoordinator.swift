@@ -108,13 +108,23 @@ final class HighRiseCoordinator: ObservableObject {
     /// name order) offered as one-click fixes, never applied automatically.
     @Published private(set) var cleanupSuggestions: [ImportCleaner.Suggestion] = []
 
+    /// Fills for *missing* data (blank names inferable from the email address
+    /// or a Full Name column, blank companies shared by coworkers' rows, …) —
+    /// like `cleanupSuggestions`, offered as one-click actions and never
+    /// applied on their own. Only ever writes into blank cells.
+    @Published private(set) var fillProposals: [ContactDataFiller.Proposal] = []
+
     /// Whether auto-cleanup is applied to the current import. Turning it off
-    /// shows the data exactly as imported (and clears any applied suggestions);
-    /// turning it back on re-cleans. Nothing touches the user's original file.
+    /// shows the data exactly as imported (and clears any applied suggestions
+    /// and fills); turning it back on re-cleans. Nothing touches the user's
+    /// original file.
     @Published var cleanupEnabled = true {
         didSet {
             guard oldValue != cleanupEnabled else { return }
-            if !cleanupEnabled { appliedSuggestions = [] }
+            if !cleanupEnabled {
+                appliedSuggestions = []
+                appliedFills = []
+            }
             remapContacts()
         }
     }
@@ -122,6 +132,10 @@ final class HighRiseCoordinator: ObservableObject {
     /// Suggestions the user accepted, re-applied in order whenever the table
     /// is re-derived (email column change, cleanup toggled back on).
     private var appliedSuggestions: [ImportCleaner.Suggestion] = []
+
+    /// Fill proposals the user accepted, re-applied (after cleanup and
+    /// suggestions) whenever the table is re-derived.
+    private var appliedFills: [ContactDataFiller.Proposal] = []
 
     /// The import exactly as parsed, before any cleanup — kept so cleanup is
     /// always reversible.
@@ -425,6 +439,7 @@ final class HighRiseCoordinator: ObservableObject {
     func ingest(_ table: RecipientTable, sourceLabel: String) async {
         rawTable = table
         appliedSuggestions = []
+        appliedFills = []
         cleanupEnabled = true
         importError = nil
 
@@ -440,6 +455,7 @@ final class HighRiseCoordinator: ObservableObject {
         isBulkUpdating = false
         cleanupReport = result.cleanupReport
         cleanupSuggestions = result.cleanupSuggestions
+        fillProposals = result.fillProposals
         parsedTable = result.parsedTable
         contacts = result.contacts
         skippedRows = result.skippedRows
@@ -458,6 +474,8 @@ final class HighRiseCoordinator: ObservableObject {
         cleanupReport = .empty
         cleanupSuggestions = []
         appliedSuggestions = []
+        fillProposals = []
+        appliedFills = []
         skippedRows = []
         clearWorkbookSelection()
         Log.csv.error("Import failed: \(message, privacy: .public)")
@@ -625,13 +643,19 @@ final class HighRiseCoordinator: ObservableObject {
             for suggestion in appliedSuggestions {
                 working = ImportCleaner.apply(suggestion, to: working).table
             }
+            let resolvedEmail = emailColumn ?? CSVParser.detectEmailColumn(in: working)
+            for fill in appliedFills {
+                working = ContactDataFiller.apply(fill, to: working, emailColumn: resolvedEmail).table
+            }
             parsedTable = working
             cleanupReport = report
             cleanupSuggestions = ImportCleaner.suggestions(for: working, emailColumn: emailColumn)
+            fillProposals = ContactDataFiller.proposals(for: working, emailColumn: resolvedEmail)
         } else {
             parsedTable = raw
             cleanupReport = .empty
             cleanupSuggestions = []
+            fillProposals = []
         }
         importedHeaders = parsedTable?.headers ?? []
         let effectiveTable = parsedTable ?? raw
@@ -648,6 +672,26 @@ final class HighRiseCoordinator: ObservableObject {
         appliedSuggestions.append(suggestion)
         remapContacts()
         Log.csv.info("Applied \(suggestion.kind.rawValue, privacy: .public) cleanup to \(suggestion.count, privacy: .public) value(s)")
+    }
+
+    /// Applies one missing-data fill proposal (names from the email address or
+    /// Full Name column, company from coworkers' rows or the domain, …) and
+    /// re-derives contacts, previews, and the remaining proposals. Only blank
+    /// cells are written; reversible via `cleanupEnabled = false`.
+    func applyFillProposal(_ proposal: ContactDataFiller.Proposal) {
+        guard cleanupEnabled else { return }
+        appliedFills.append(proposal)
+        remapContacts()
+        Log.csv.info("Filled missing data (\(proposal.kind.rawValue, privacy: .public)) into \(proposal.count, privacy: .public) blank cell(s)")
+    }
+
+    /// Applies every currently offered fill proposal at once, most confident
+    /// sources first (the order `ContactDataFiller.proposals` returns).
+    func applyAllFillProposals() {
+        guard cleanupEnabled, !fillProposals.isEmpty else { return }
+        appliedFills.append(contentsOf: fillProposals)
+        remapContacts()
+        Log.csv.info("Applied all missing-data fill proposals")
     }
 
     // MARK: - Name-inference repair
@@ -971,6 +1015,8 @@ final class HighRiseCoordinator: ObservableObject {
         cleanupReport = .empty
         cleanupSuggestions = []
         appliedSuggestions = []
+        fillProposals = []
+        appliedFills = []
         emailColumn = nil
         attachmentColumn = nil
         clearWorkbookSelection()
