@@ -67,7 +67,11 @@ the user reviews and taps Send themselves, one at a time, so there's no
 unattended batch send on iOS. `HighRiseMobile/Views/HomeView.swift` is a
 smaller version of the macOS Home dashboard (same `Greeting`/`NextStep`
 logic, no sending-from picker/scheduled-send/saved-templates/do-not-contact —
-none of those exist on iOS). See "Using it on iOS" in `README.md` for the
+none of those exist on iOS). The iOS Import screen surfaces the same
+`ContactDataFiller` missing-data fill proposals as the Mac import screen
+(tap-to-apply rows + Fill All; `MobileCoordinator` retains the raw table and
+replays accepted fills through `ImportPipeline.run`, mirroring the macOS
+coordinator's `remapContacts`). See "Using it on iOS" in `README.md` for the
 user-facing summary and `HighRiseMobile/HighRiseMobileApp.swift` for the
 flow. CI builds+tests it via the `Test iOS app` step in `ci.yml`, picking
 whatever simulator destination

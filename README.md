@@ -129,7 +129,7 @@ troubleshooting live in [`Windows/README.md`](Windows/README.md).
 
 `HighRiseMobile` is a separate iOS/iPadOS app target (`xcodebuild -scheme
 HighRiseMobile`) sharing the macOS app's Foundation-only import/merge core
-(CSV parsing, cleanup, `{{Field}}` templating). It's a smaller app by
+(CSV parsing, cleanup, opt-in missing-data fills, `{{Field}}` templating). It's a smaller app by
 necessity: iOS has no AppleScript/Apple Events, so there's no way to drive
 Mail or Outlook unattended the way the macOS app does. Instead it hands each
 ready recipient to `MFMailComposeViewController` — the user reviews and taps
