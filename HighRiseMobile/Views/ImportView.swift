@@ -22,6 +22,37 @@ struct ImportView: View {
                             Text(summary).font(.footnote).foregroundStyle(.secondary)
                         }
                     }
+                    if !coordinator.fillProposals.isEmpty {
+                        Section {
+                            ForEach(coordinator.fillProposals) { proposal in
+                                Button {
+                                    coordinator.applyFillProposal(proposal)
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(proposal.title)
+                                            .font(.footnote)
+                                            .foregroundStyle(.primary)
+                                        if let example = proposal.examples.first {
+                                            Text("\(example.before) → \(example.after)")
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                        }
+                                    }
+                                }
+                            }
+                            if coordinator.fillProposals.count > 1 {
+                                Button("Fill All") {
+                                    coordinator.applyAllFillProposals()
+                                }
+                                .font(.footnote.weight(.semibold))
+                            }
+                        } header: {
+                            Text("Fill missing data")
+                        } footer: {
+                            Text("Optional fills for blank cells, worked out from the list itself — nothing is looked up online, and existing values are never changed. Tap a fill to apply it.")
+                        }
+                    }
                     Section("Recipients (\(coordinator.contacts.count))") {
                         ForEach(coordinator.contacts) { contact in
                             VStack(alignment: .leading) {

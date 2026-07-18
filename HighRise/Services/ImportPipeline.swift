@@ -18,6 +18,7 @@ enum ImportPipeline {
         let emailColumn: String?
         let cleanupReport: ImportCleaner.Report
         let cleanupSuggestions: [ImportCleaner.Suggestion]
+        let fillProposals: [ContactDataFiller.Proposal]
         let parsedTable: RecipientTable
         let contacts: [Contact]
         let skippedRows: [CSVParser.SkippedRow]
@@ -26,10 +27,12 @@ enum ImportPipeline {
 
     static func run(table: RecipientTable, sourceLabel: String, cleanupEnabled: Bool,
                     appliedSuggestions: [ImportCleaner.Suggestion],
+                    appliedFills: [ContactDataFiller.Proposal] = [],
                     emailColumnOverride: String?) -> Result {
         let parsedTable: RecipientTable
         let cleanupReport: ImportCleaner.Report
         var cleanupSuggestions: [ImportCleaner.Suggestion] = []
+        var fillProposals: [ContactDataFiller.Proposal] = []
 
         if cleanupEnabled {
             let (cleaned, report) = ImportCleaner.autoClean(table, emailColumn: emailColumnOverride)
@@ -37,9 +40,16 @@ enum ImportPipeline {
             for suggestion in appliedSuggestions {
                 working = ImportCleaner.apply(suggestion, to: working).table
             }
+            // Fills run after cleanup and accepted suggestions, on the email
+            // column as resolved against the cleaned table.
+            let resolvedEmail = emailColumnOverride ?? CSVParser.detectEmailColumn(in: working)
+            for fill in appliedFills {
+                working = ContactDataFiller.apply(fill, to: working, emailColumn: resolvedEmail).table
+            }
             parsedTable = working
             cleanupReport = report
             cleanupSuggestions = ImportCleaner.suggestions(for: working, emailColumn: emailColumnOverride)
+            fillProposals = ContactDataFiller.proposals(for: working, emailColumn: resolvedEmail)
         } else {
             parsedTable = table
             cleanupReport = .empty
@@ -61,7 +71,8 @@ enum ImportPipeline {
 
         return Result(importedHeaders: importedHeaders, attachmentColumn: attachmentColumn,
                       emailColumn: emailColumn, cleanupReport: cleanupReport,
-                      cleanupSuggestions: cleanupSuggestions, parsedTable: parsedTable,
+                      cleanupSuggestions: cleanupSuggestions, fillProposals: fillProposals,
+                      parsedTable: parsedTable,
                       contacts: contacts, skippedRows: skippedRows, importSummary: summary)
     }
 

@@ -115,6 +115,8 @@ targets:
       - path: HighRise/Services/DuplicateDetector.swift
       - path: HighRise/Services/ImportCleaner.swift
       - path: HighRise/Services/ImportPipeline.swift
+      - path: HighRise/Services/ContactDataFiller.swift
+      - path: HighRise/Services/NameInference.swift
       - path: HighRise/Services/MarkdownToHTML.swift
       - path: HighRise/Services/Greeting.swift
       - path: HighRise/Services/NextStep.swift
