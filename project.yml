@@ -24,12 +24,13 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "1.0"
-    # Apple already has Builds 42 and 46 for version 1.0 on the App Store
-    # Connect record (both unsandboxed uploads from the plain `HighRise`
-    # scheme, rejected with ITMS-90296 — App Store uploads must archive the
-    # sandboxed `HighRise-MAS` scheme instead). Every new upload needs a
-    # higher build number, so bump this before archiving.
-    CURRENT_PROJECT_VERSION: "47"
+    # Apple already has Builds 42, 46, and 49 for version 1.0 on the App
+    # Store Connect record (all unsandboxed uploads from the plain `HighRise`
+    # scheme, each rejected with ITMS-90296 — App Store uploads must archive
+    # the sandboxed `HighRise-MAS` scheme instead; the schemes' archive
+    # actions below now label and warn about this in Organizer). Every new
+    # upload needs a higher build number, so bump this before archiving.
+    CURRENT_PROJECT_VERSION: "50"
     CODE_SIGN_STYLE: Automatic
     # Set your signing team here (or in Xcode) to run a signed build.
     DEVELOPMENT_TEAM: ""
@@ -163,6 +164,19 @@ schemes:
     test:
       targets:
         - HighRiseTests
+    # Guard rails against the repeat ITMS-90296 mistake (Builds 42/46/49):
+    # this scheme's archive is the UNSANDBOXED Developer ID build and must
+    # never be uploaded to App Store Connect. The archive name says so in
+    # Organizer, and archiving on a Mac (not CI) pops a warning dialog.
+    archive:
+      customArchiveName: HighRise Developer-ID (NOT for App Store)
+      postActions:
+        - name: Warn — wrong scheme for the Mac App Store
+          settingsTarget: HighRise
+          script: |
+            if [ -z "$CI" ] && [ -z "$GITHUB_ACTIONS" ]; then
+              ( /usr/bin/osascript -e 'display alert "Not an App Store build" message "This archive is the UNSANDBOXED Developer ID build (scheme: HighRise). App Store Connect rejects it with ITMS-90296.\n\nFor the Mac App Store, archive the HighRise-MAS scheme — its archive shows up in Organizer as “HighRise App Store (sandboxed)”." as critical' >/dev/null 2>&1 & )
+            fi
   HighRiseMobile:
     build:
       targets:
@@ -180,3 +194,12 @@ schemes:
     test:
       targets:
         - HighRiseTests
+    archive:
+      customArchiveName: HighRise App Store (sandboxed)
+      postActions:
+        - name: Confirm — correct scheme for the Mac App Store
+          settingsTarget: HighRise-MAS
+          script: |
+            if [ -z "$CI" ] && [ -z "$GITHUB_ACTIONS" ]; then
+              ( /usr/bin/osascript -e 'display notification "Sandboxed App Store build — distribute this archive." with title "HighRise-MAS archive ✓"' >/dev/null 2>&1 & )
+            fi
