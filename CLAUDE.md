@@ -81,8 +81,16 @@ the runner reports rather than hardcoding a device name.
 **Universal Purchase**: `HighRiseMobile`'s `PRODUCT_BUNDLE_IDENTIFIER` is
 deliberately `com.bryansnotes.highrise` — the *same* bundle ID as the macOS
 `HighRise` target, not its own. That's what lets both platforms ship under
-one App Store Connect app record ("HighRise") as a Universal Purchase app,
-rather than iOS needing a separate bundle ID/app record/listing.
+one App Store Connect app record as a Universal Purchase app, rather than
+iOS needing a separate bundle ID/app record/listing.
+
+**App Store name**: the App Store Connect record (Apple ID 6788961231) is
+named **"HighRise G2"** — deliberate, owner-set (the name "HighRise" was
+already taken on the App Store; confirmed 2026-07-18). Do NOT "fix" the
+record name back to HighRise, and don't confuse it with the retired
+`com.hensolutions.HighRise-G2` *bundle ID* from the stale external-drive
+lineage — the shipping bundle ID is still `com.bryansnotes.highrise`, and
+the installed app's `CFBundleDisplayName` stays "HighRise".
 
 **Distribution**: `release.yml`'s `release-ios` job builds + uploads
 `HighRiseMobile` to TestFlight on the same tag-push/manual triggers as the
