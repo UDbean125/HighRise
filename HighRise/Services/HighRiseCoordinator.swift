@@ -770,9 +770,10 @@ final class HighRiseCoordinator: ObservableObject {
             do {
                 let result = try await EnrichmentEngine.run(
                     table: table, emailColumn: email, provider: provider,
-                    onProgress: { done, total in
-                        Task { @MainActor [weak self] in
-                            self?.enrichmentProgress = total > 0 ? Double(done) / Double(total) : 0
+                    onProgress: { [weak self] done, total in
+                        guard let self else { return }
+                        Task { @MainActor in
+                            self.enrichmentProgress = total > 0 ? Double(done) / Double(total) : 0
                         }
                     })
                 guard let self, !Task.isCancelled else { return }
