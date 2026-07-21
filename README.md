@@ -14,6 +14,15 @@ Built to the Bryan's Notes stack rules: Swift + SwiftUI, Apple SDK only,
 
 1. **Compose** an email template (plain text or HTML) with `{{Field}}` merge
    placeholders — `{{Name}}`, `{{Company}}`, or any column from your list.
+   Start from scratch or from one of **35 ready-made templates** across six
+   categories — Grow (outreach, follow-ups, quotes), Connect (meetings,
+   invites), Get paid (invoices, orders), Retain (renewals, check-ins),
+   Announce (launches, price changes), and Recruit (candidates, interviews).
+   Each is already wired up with merge fields and fallbacks, so it doubles as
+   a tutorial in the syntax. A merge-field palette inserts placeholders for
+   you, an on-device **content check** flags spam-trigger phrases and missing
+   greetings, and a live preview shows a real merged message as you type.
+   All of this works the same on macOS and iOS.
 2. **Import recipients** from any of:
    - CSV / TSV files — delimiter (comma/semicolon/tab), a UTF-8 BOM, and
      non-UTF-8 encodings are handled automatically
@@ -141,7 +150,8 @@ troubleshooting live in [`Windows/README.md`](Windows/README.md).
 
 `HighRiseMobile` is a separate iOS/iPadOS app target (`xcodebuild -scheme
 HighRiseMobile`) sharing the macOS app's Foundation-only import/merge core
-(CSV parsing, cleanup, opt-in missing-data fills, `{{Field}}` templating). It's a smaller app by
+(CSV parsing, cleanup, opt-in missing-data fills, `{{Field}}` templating,
+the 35-template starter gallery, merge-field palette, and content check). It's a smaller app by
 necessity: iOS has no AppleScript/Apple Events, so there's no way to drive
 Mail or Outlook unattended the way the macOS app does. Instead it hands each
 ready recipient to `MFMailComposeViewController` — the user reviews and taps

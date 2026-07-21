@@ -12,7 +12,7 @@ struct StarterTemplateCatalogTests {
 
     @Test("Ships a non-trivial, well-formed catalog")
     func wellFormed() {
-        #expect(all.count >= 6)
+        #expect(all.count >= 25)
         #expect(Set(all.map(\.id)).count == all.count, "IDs must be unique")
         #expect(Set(all.map(\.name)).count == all.count, "Names must be unique")
         for starter in all {
@@ -49,6 +49,35 @@ struct StarterTemplateCatalogTests {
                     "\(starter.id) subject leaked a placeholder")
             #expect(!preview.resolvedBody.contains("{{"),
                     "\(starter.id) body leaked a placeholder")
+        }
+    }
+
+    @Test("Grouping covers every template, in the declared category order")
+    func grouping() {
+        let grouped = StarterTemplateCatalog.byCategory
+        // Nothing lost or duplicated by grouping.
+        #expect(grouped.flatMap(\.templates).count == all.count)
+        #expect(Set(grouped.map(\.category)).count == grouped.count, "Categories must be distinct")
+        #expect(grouped.allSatisfy { !$0.templates.isEmpty }, "No empty category groups")
+
+        // Known categories appear in `categoryOrder`'s order, ahead of any
+        // unlisted ones.
+        let ranks = grouped.map { StarterTemplateCatalog.categoryOrder.firstIndex(of: $0.category) ?? Int.max }
+        #expect(ranks == ranks.sorted(), "Categories must follow categoryOrder")
+
+        // Every category the templates actually use is a known one — a typo'd
+        // category would otherwise silently sort to the end.
+        for group in grouped {
+            #expect(StarterTemplateCatalog.categoryOrder.contains(group.category),
+                    "Unknown category “\(group.category)” — add it to categoryOrder")
+        }
+    }
+
+    @Test("Every category carries a useful number of templates")
+    func categoriesAreSubstantial() {
+        for group in StarterTemplateCatalog.byCategory {
+            #expect(group.templates.count >= 3,
+                    "Category “\(group.category)” has only \(group.templates.count)")
         }
     }
 
