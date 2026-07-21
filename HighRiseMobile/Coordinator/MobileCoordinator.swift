@@ -7,6 +7,9 @@ import Foundation
 @MainActor
 final class MobileCoordinator: ObservableObject {
     @Published var contacts: [Contact] = []
+    /// Column headers from the current import — the Compose screen offers
+    /// these as tap-to-insert merge fields, since they always resolve.
+    @Published private(set) var importedHeaders: [String] = []
     @Published var importSummary: String?
     @Published var importError: String?
 
@@ -97,6 +100,7 @@ final class MobileCoordinator: ObservableObject {
             appliedSuggestions: [], appliedFills: appliedFills,
             emailColumnOverride: nil)
         contacts = result.contacts
+        importedHeaders = result.importedHeaders
         importSummary = result.importSummary
         fillProposals = result.fillProposals
         currentTable = result.parsedTable

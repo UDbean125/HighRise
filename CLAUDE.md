@@ -59,6 +59,8 @@ drives Mail/Outlook — don't exist on iOS. It reuses the shared Foundation-only
 import/merge files (`Contact`, `EmailTemplate`, `RecipientTable`, `CSVParser`,
 `EmailValidator`, `TemplateMergeEngine`, `MergeValueFormatter`,
 `ImportPipeline`, `ImportCleaner`, `ContactDataFiller`, `NameInference`,
+`StarterTemplate`, `MergeFieldCatalog`, `ContentLinter`, `GreetingCheck`,
+`PlaceholderCheck`,
 `EnrichmentProvider`, `ApolloEnrichmentProvider`, `EnrichmentEngine`,
 `EnrichmentKeyStore`, `DuplicateDetector`, `MarkdownToHTML`,
 `FieldSynonyms`, `TemplateVariant`, `Greeting`, `NextStep` — each listed
@@ -68,7 +70,11 @@ the user reviews and taps Send themselves, one at a time, so there's no
 unattended batch send on iOS. `HighRiseMobile/Views/HomeView.swift` is a
 smaller version of the macOS Home dashboard (same `Greeting`/`NextStep`
 logic, no sending-from picker/scheduled-send/saved-templates/do-not-contact —
-none of those exist on iOS). The iOS Import screen surfaces the same
+none of those exist on iOS). The iOS Compose screen has **feature parity**
+with the Mac's: the `StarterTemplateCatalog` gallery (`StarterTemplateSheet`),
+tap-to-insert merge fields (`MergeFieldSheet`, offering the imported columns
+first), the `ContentLinter` check, and a live merged preview. Saved templates
+(`TemplateLibraryStore`) are still Mac-only. The iOS Import screen surfaces the same
 `ContactDataFiller` missing-data fill proposals as the Mac import screen
 (tap-to-apply rows + Fill All; `MobileCoordinator` retains the raw table and
 replays accepted fills through `ImportPipeline.run`, mirroring the macOS
