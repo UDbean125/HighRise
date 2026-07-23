@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct HighRiseApp: App {
     @StateObject private var coordinator = HighRiseCoordinator()
+    @NSApplicationDelegateAdaptor(HighRiseAppDelegate.self) private var appDelegate
 
     var body: some Scene {
         WindowGroup {
@@ -21,5 +22,13 @@ struct HighRiseApp: App {
                 }
             }
         }
+    }
+}
+
+// HighRise has no menu item to reopen the main window once closed, so quit
+// instead of leaving a windowless app stuck in the Dock.
+final class HighRiseAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
     }
 }
