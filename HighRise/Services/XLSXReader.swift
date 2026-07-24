@@ -81,6 +81,10 @@ enum XLSXReader {
     static func RelationshipsParser_forTesting(_ data: Data) -> [String: String] {
         RelationshipsParser.parse(data)
     }
+    /// Nil means the sheet is malformed (a cell reference out of range).
+    static func SheetParser_forTesting(_ data: Data, sharedStrings: [String] = []) -> [[String]]? {
+        SheetParser.parse(data, sharedStrings: sharedStrings)
+    }
 
     /// Reads the first worksheet in the workbook's declared tab order.
     static func read(_ url: URL) throws -> RecipientTable {
@@ -110,7 +114,9 @@ enum XLSXReader {
         }
 
         let sheetData = try ZipEntryReader.entry(sheetPath, in: url)
-        let grid = SheetParser.parse(sheetData, sharedStrings: sharedStrings)
+        guard let grid = SheetParser.parse(sheetData, sharedStrings: sharedStrings) else {
+            throw XLSXError.malformed("a cell reference is out of range")
+        }
         guard let headerRow = grid.first else { throw XLSXError.empty }
 
         let headers = headerRow.map { $0.trimmingCharacters(in: .whitespaces) }
@@ -123,13 +129,22 @@ enum XLSXReader {
     }
 
     /// Converts a spreadsheet cell reference's column letters to a 0-based index
-    /// ("A" → 0, "B" → 1, "AA" → 26).
-    static func columnIndex(fromCellRef ref: String) -> Int {
+    /// ("A" → 0, "B" → 1, "AA" → 26), or nil for a reference beyond OOXML's
+    /// real maximum column ("XFD", index 16,383). The cap matters: an
+    /// unbounded accumulator lets a corrupt/hostile ref like
+    /// "AAAAAAAAAAAAAAA1" trap on Int overflow, and merely-large ones (ZZZZ1)
+    /// balloon `normalizedRows()` into out-of-memory row widths. Nothing
+    /// legitimate is ever above XFD, so out-of-range means malformed.
+    static func columnIndex(fromCellRef ref: String) -> Int? {
         var index = 0
+        var letters = 0
         for ch in ref {
             guard ch.isLetter, let value = ch.uppercased().unicodeScalars.first?.value else { break }
+            letters += 1
+            if letters > 3 { return nil } // beyond "XFD" — can't be a real column
             index = index * 26 + Int(value - 64) // 'A' (65) → 1
         }
+        guard index <= 16_384 else { return nil }
         return max(0, index - 1)
     }
 
@@ -243,6 +258,16 @@ enum XLSXReader {
 
         private var currentRow: [Int: String] = [:]
         private var currentColumn = 0
+        /// The last column filled in the current row. Per ECMA-376 the `r`
+        /// attribute on `<c>` is optional — several streaming writers omit
+        /// it — and an unreferenced cell occupies the next sequential slot.
+        /// Without this, every ref-less cell lands in column 0 and only the
+        /// row's last value survives.
+        private var lastColumn = -1
+        /// Set when a cell reference is beyond any real spreadsheet column —
+        /// the sheet is malformed, so parsing aborts and `parse` returns nil
+        /// rather than crashing or fabricating data.
+        private var sawInvalidRef = false
         private var currentType = ""
         private var currentValue = ""
         private var inValue = false
@@ -250,11 +275,12 @@ enum XLSXReader {
 
         init(sharedStrings: [String]) { self.sharedStrings = sharedStrings }
 
-        static func parse(_ data: Data, sharedStrings: [String]) -> [[String]] {
+        static func parse(_ data: Data, sharedStrings: [String]) -> [[String]]? {
             let parser = XMLParser(data: data)
             let delegate = SheetParser(sharedStrings: sharedStrings)
             parser.delegate = delegate
             parser.parse()
+            guard !delegate.sawInvalidRef else { return nil }
             return delegate.normalizedRows()
         }
 
@@ -264,9 +290,20 @@ enum XLSXReader {
             switch elementName {
             case "row":
                 currentRow = [:]
+                lastColumn = -1
             case "c":
                 currentType = attributeDict["t"] ?? ""
-                currentColumn = XLSXReader.columnIndex(fromCellRef: attributeDict["r"] ?? "")
+                if let ref = attributeDict["r"], ref.first?.isLetter == true {
+                    guard let column = XLSXReader.columnIndex(fromCellRef: ref) else {
+                        sawInvalidRef = true
+                        parser.abortParsing()
+                        return
+                    }
+                    currentColumn = column
+                } else {
+                    currentColumn = lastColumn + 1
+                }
+                lastColumn = currentColumn
                 currentValue = ""
             case "v":
                 inValue = true
