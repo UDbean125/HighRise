@@ -25,10 +25,62 @@ struct EmailValidatorTests {
 
 struct XLSXReaderTests {
     @Test("Column letters map to zero-based indices", arguments: [
-        ("A1", 0), ("B2", 1), ("Z9", 25), ("AA1", 26), ("AB10", 27)
+        ("A1", 0), ("B2", 1), ("Z9", 25), ("AA1", 26), ("AB10", 27), ("XFD1", 16_383)
     ])
     func columnIndex(ref: String, expected: Int) {
         #expect(XLSXReader.columnIndex(fromCellRef: ref) == expected)
+    }
+
+    @Test("Out-of-range column references are rejected, not trapped or materialized", arguments: [
+        "XFE1",              // one past the real OOXML maximum (XFD)
+        "ZZZZ1",             // would normalize every row to 475,254 cells
+        "AAAAAAAA1",         // ~8 billion columns — guaranteed OOM if honored
+        "AAAAAAAAAAAAAAA1",  // enough letters to trap Int overflow unbounded
+    ])
+    func columnIndexRejectsOutOfRange(ref: String) {
+        #expect(XLSXReader.columnIndex(fromCellRef: ref) == nil)
+    }
+
+    // MARK: - Sheet cell placement
+
+    @Test("Cells without the optional r= attribute occupy sequential columns")
+    func cellsWithoutRefsPlaceSequentially() {
+        // ECMA-376 makes r optional on <c>; streaming writers (SheetJS dense
+        // mode and friends) omit it. Every cell must not collapse into col 0.
+        let sheet = """
+        <worksheet><sheetData>
+          <row><c t="inlineStr"><is><t>Name</t></is></c><c t="inlineStr"><is><t>Email</t></is></c></row>
+          <row><c t="inlineStr"><is><t>Jane</t></is></c><c t="inlineStr"><is><t>j@acme.com</t></is></c></row>
+        </sheetData></worksheet>
+        """
+        let grid = XLSXReader.SheetParser_forTesting(Data(sheet.utf8))
+        #expect(grid == [["Name", "Email"], ["Jane", "j@acme.com"]])
+    }
+
+    @Test("Referenced and unreferenced cells interleave correctly")
+    func mixedRefsInterleave() {
+        // B1 is explicit; the next ref-less cell continues after it (C1).
+        let sheet = """
+        <worksheet><sheetData>
+          <row>
+            <c t="inlineStr"><is><t>first</t></is></c>
+            <c r="B1" t="inlineStr"><is><t>second</t></is></c>
+            <c t="inlineStr"><is><t>third</t></is></c>
+          </row>
+        </sheetData></worksheet>
+        """
+        let grid = XLSXReader.SheetParser_forTesting(Data(sheet.utf8))
+        #expect(grid == [["first", "second", "third"]])
+    }
+
+    @Test("A malformed cell reference aborts the sheet instead of crashing")
+    func malformedRefAbortsParse() {
+        let sheet = """
+        <worksheet><sheetData>
+          <row><c r="ZZZZ1" t="inlineStr"><is><t>x</t></is></c></row>
+        </sheetData></worksheet>
+        """
+        #expect(XLSXReader.SheetParser_forTesting(Data(sheet.utf8)) == nil)
     }
 
     // MARK: - Worksheet discovery (multi-sheet picker + first-sheet bug fix)
