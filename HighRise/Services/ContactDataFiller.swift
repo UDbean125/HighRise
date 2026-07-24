@@ -32,8 +32,10 @@ enum ContactDataFiller {
     // MARK: - Proposal
 
     /// One category of fill worth offering — applied only when the user asks.
-    struct Proposal: Equatable, Identifiable {
-        enum Kind: String {
+    /// Codable so accepted fills survive a quit (session restore re-applies
+    /// them in order — see `SessionStore`).
+    struct Proposal: Equatable, Identifiable, Codable {
+        enum Kind: String, Codable {
             /// Same email address on several rows; copy values between them.
             case fromDuplicates
             /// Blank First/Last Name filled by splitting a populated Full Name.

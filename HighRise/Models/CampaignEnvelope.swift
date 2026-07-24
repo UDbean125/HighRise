@@ -11,7 +11,7 @@ import Foundation
 /// Resolution and validation happen in the coordinator via
 /// `TemplateMergeEngine.resolvePlaceholders` + `EmailValidator`; this model just
 /// holds the raw user input.
-struct CampaignEnvelope: Equatable {
+struct CampaignEnvelope: Equatable, Codable {
     /// CC recipients, comma/semicolon-separated, may contain `{{Field}}`.
     var cc: String = ""
     /// BCC recipients, comma/semicolon-separated, may contain `{{Field}}`.

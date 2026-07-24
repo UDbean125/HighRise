@@ -291,17 +291,33 @@ final class HighRiseCoordinator: ObservableObject {
     private var scheduleTask: Task<Void, Never>?
     var isScheduled: Bool { scheduledFireDate != nil }
 
+    /// A send that was scheduled but never fired because the app wasn't
+    /// running at its fire time (closing the window quits the app). One-shot
+    /// notice for the Send screen; never auto-sends stale content.
+    @Published private(set) var missedScheduleDate: Date?
+
     /// The on-device do-not-contact list. Mutations are mirrored into
     /// `suppressionEntries` so SwiftUI re-renders and `previews` re-evaluates.
     private let doNotContact = DoNotContactStore()
     @Published private(set) var suppressionEntries: [SuppressionEntry] = []
 
     /// The saved-template library and crash-safe autosave of the working draft.
-    private let library = TemplateLibraryStore()
+    private let library: TemplateLibraryStore
     @Published private(set) var savedTemplates: [SavedTemplate] = []
     private var cancellables = Set<AnyCancellable>()
 
-    init() {
+    /// Quit-safe persistence of the rest of the session (imported list,
+    /// accepted cleanup/fill decisions, campaign settings, pending schedule).
+    /// Closing the window quits the app, so this is what makes that lossless.
+    private let sessionStore: SessionStore
+    private var isRestoringSession = false
+
+    /// Both stores are injectable so tests can isolate (or disable) the real
+    /// Application Support persistence; the defaults are the live app's.
+    init(sessionStore: SessionStore = SessionStore(),
+         library: TemplateLibraryStore = TemplateLibraryStore()) {
+        self.sessionStore = sessionStore
+        self.library = library
         suppressionEntries = doNotContact.entries
         savedTemplates = library.templates
         // Restore the last working draft if one was autosaved.
@@ -311,6 +327,128 @@ final class HighRiseCoordinator: ObservableObject {
             .debounce(for: .seconds(1), scheduler: RunLoop.main)
             .sink { [weak self] draft in self?.library.saveAutosave(draft) }
             .store(in: &cancellables)
+        restoreSession()
+        // Autosave the session after any published change settles. The
+        // debounce keeps a big imported table from being re-encoded per
+        // keystroke; the willTerminate hook below catches the final state.
+        objectWillChange
+            .debounce(for: .seconds(2), scheduler: RunLoop.main)
+            .sink { [weak self] in self?.saveSessionNow() }
+            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)
+            .sink { [weak self] _ in self?.saveSessionNow() }
+            .store(in: &cancellables)
+    }
+
+    // MARK: - Session persistence
+
+    private func captureSession() -> SessionSnapshot {
+        SessionSnapshot(rawTable: rawTable,
+                        importSourceLabel: importSourceLabel,
+                        emailColumn: emailColumn,
+                        nameColumn: nameColumn,
+                        attachmentColumn: attachmentColumn,
+                        cleanupEnabled: cleanupEnabled,
+                        appliedSuggestions: appliedSuggestions,
+                        appliedFills: appliedFills,
+                        envelope: envelope,
+                        selectedClientRaw: selectedClient.rawValue,
+                        sendModeRaw: sendMode.rawValue,
+                        senderIdentity: senderIdentity,
+                        unsubscribeEnabled: unsubscribeEnabled,
+                        unsubscribeReplyTo: unsubscribeReplyTo,
+                        unsubscribeNote: unsubscribeNote,
+                        scheduledFireDate: scheduledFireDate)
+    }
+
+    /// Writes the current session immediately (the debounced autosave and the
+    /// willTerminate hook both funnel here). Internal so tests can force a
+    /// write without waiting out the debounce.
+    func saveSessionNow() {
+        guard !isRestoringSession else { return }
+        sessionStore.save(captureSession())
+    }
+
+    /// Rebuilds the previous session on launch: settings synchronously, then
+    /// the imported list by replaying the raw table + accepted decisions
+    /// through `ImportPipeline.run` off the main thread (the same funnel a
+    /// live import uses), then any pending schedule.
+    private func restoreSession() {
+        guard let snap = sessionStore.load() else { return }
+        isRestoringSession = true
+        envelope = snap.envelope
+        senderIdentity = snap.senderIdentity
+        unsubscribeEnabled = snap.unsubscribeEnabled
+        unsubscribeReplyTo = snap.unsubscribeReplyTo
+        unsubscribeNote = snap.unsubscribeNote
+        // Raw strings degrade to the defaults when a case is unavailable
+        // (an Outlook session restored inside the MAS build).
+        if let raw = snap.selectedClientRaw, let client = MailClient(rawValue: raw) {
+            selectedClient = client
+        }
+        if let raw = snap.sendModeRaw, let mode = SendMode(rawValue: raw) {
+            sendMode = mode
+        }
+        // Before the table exists: its didSet's remap no-ops, and it must not
+        // clear the decisions restored after it.
+        cleanupEnabled = snap.cleanupEnabled
+        guard let table = snap.rawTable else {
+            isRestoringSession = false
+            finishScheduleRestore(snap)
+            return
+        }
+        rawTable = table
+        importSourceLabel = snap.importSourceLabel
+        appliedSuggestions = snap.appliedSuggestions
+        appliedFills = snap.appliedFills
+        nameColumn = snap.nameColumn
+        isImporting = true
+        Task { @MainActor [weak self] in
+            let result = await Task.detached(priority: .userInitiated) {
+                ImportPipeline.run(table: table,
+                                   sourceLabel: snap.importSourceLabel ?? "your last session",
+                                   cleanupEnabled: snap.cleanupEnabled,
+                                   appliedSuggestions: snap.appliedSuggestions,
+                                   appliedFills: snap.appliedFills,
+                                   emailColumnOverride: snap.emailColumn)
+            }.value
+            guard let self else { return }
+            // A fresh import may have superseded the restore mid-flight.
+            guard self.rawTable == table else { return }
+            self.importedHeaders = result.importedHeaders
+            self.attachmentColumn = snap.attachmentColumn ?? result.attachmentColumn
+            self.isBulkUpdating = true
+            self.emailColumn = result.emailColumn
+            self.isBulkUpdating = false
+            self.cleanupReport = result.cleanupReport
+            self.cleanupSuggestions = result.cleanupSuggestions
+            self.fillProposals = result.fillProposals
+            self.parsedTable = result.parsedTable
+            self.contacts = result.contacts
+            self.skippedRows = result.skippedRows
+            self.importSummary = result.importSummary
+            self.isImporting = false
+            self.isRestoringSession = false
+            self.finishScheduleRestore(snap)
+            Log.csv.info("Restored session: \(result.contacts.count, privacy: .public) contacts from \(snap.importSourceLabel ?? "last session", privacy: .public)")
+        }
+    }
+
+    /// Re-arms a persisted schedule whose fire time is still ahead (freezing
+    /// the queue from the just-restored list — identical data in, identical
+    /// queue out). A fire time that passed while the app was closed becomes a
+    /// `missedScheduleDate` notice instead; stale content is never auto-sent.
+    private func finishScheduleRestore(_ snap: SessionSnapshot) {
+        guard let fire = snap.scheduledFireDate else { return }
+        if fire > Date(), !sendablePreviews.isEmpty, !isSending {
+            scheduleSend(at: fire)
+        } else {
+            missedScheduleDate = fire
+        }
+    }
+
+    func dismissMissedSchedule() {
+        missedScheduleDate = nil
     }
 
     // MARK: - Template library

@@ -24,14 +24,14 @@ struct ScheduledSendTests {
 struct ScheduleGuardTests {
     @Test("A past date does not schedule anything")
     func pastDateIgnored() {
-        let coordinator = HighRiseCoordinator()
+        let coordinator = HighRiseCoordinator.hermetic()
         coordinator.scheduleSend(at: Date().addingTimeInterval(-100))
         #expect(!coordinator.isScheduled)
     }
 
     @Test("Scheduling with nothing sendable is a no-op")
     func nothingToSchedule() {
-        let coordinator = HighRiseCoordinator()   // no contacts imported
+        let coordinator = HighRiseCoordinator.hermetic()   // no contacts imported
         coordinator.scheduleSend(at: Date().addingTimeInterval(3600))
         #expect(!coordinator.isScheduled)
     }
