@@ -11,6 +11,14 @@
          equivalent. -->
     <key>com.apple.security.network.client</key>
     <true/>
+    <!-- Two layers must BOTH grant Mail automation: scripting-targets is the
+         App Sandbox's grant, while automation.apple-events is the Hardened
+         Runtime's. Without the latter, TCC auto-denies every Apple Event
+         (errAEEventNotPermitted, -1743) without ever showing the consent
+         prompt — i.e. drafting/sending would fail in the store build.
+         NSAppleEventsUsageDescription in Info.plist supplies the prompt text. -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
     <key>com.apple.security.scripting-targets</key>
     <dict>
         <key>com.apple.mail</key>
