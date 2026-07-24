@@ -23,7 +23,14 @@ struct SendSessionView: View {
         .navigationTitle("Sending")
         .navigationBarBackButtonHidden(!(coordinator.queue?.isFinished ?? true))
         .onAppear {
-            if coordinator.queue == nil { coordinator.startSendQueue() }
+            // Rebuild on re-entry with a finished queue too — otherwise the
+            // stale "Done" summary shows forever and a second session can
+            // never start without re-importing the list. Safe within a
+            // visit: onAppear doesn't refire while the just-finished summary
+            // is on screen.
+            if coordinator.queue == nil || coordinator.queue?.isFinished == true {
+                coordinator.startSendQueue()
+            }
         }
         .sheet(isPresented: $showingComposer) {
             if let current = coordinator.queue?.current {

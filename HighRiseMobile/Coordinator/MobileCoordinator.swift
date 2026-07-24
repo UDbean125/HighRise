@@ -49,11 +49,18 @@ final class MobileCoordinator: ObservableObject {
     /// least one imported contact).
     var canProceedToReview: Bool { hasTemplateContent && !contacts.isEmpty }
 
+    /// Outcomes of the most recently completed send session, snapshotted when
+    /// a new queue replaces a finished one — so the Home dashboard's "you're
+    /// all set" state survives starting another run.
+    @Published private(set) var lastRunOutcomes: [SendOutcome] = []
+
     /// Whether the current (or most recent) send queue has actually sent
     /// anything — used to pick the Home dashboard's "next step" suggestion.
     var hasCompletedASend: Bool {
-        guard let queue, queue.isFinished else { return false }
-        return queue.outcomes.contains { $0.isSuccess }
+        if let queue, queue.isFinished, queue.outcomes.contains(where: \.isSuccess) {
+            return true
+        }
+        return lastRunOutcomes.contains { $0.isSuccess }
     }
 
     /// Parses `data` as CSV, runs it through the same cleanup/import pipeline
@@ -71,7 +78,10 @@ final class MobileCoordinator: ObservableObject {
             self.sourceLabel = sourceLabel
             appliedFills = []
             rerunPipeline()
+            // A new list is a new campaign: drop the old queue and the
+            // previous run's completion state with it.
             queue = nil
+            lastRunOutcomes = []
         } catch {
             importError = error.localizedDescription
         }
@@ -179,8 +189,14 @@ final class MobileCoordinator: ObservableObject {
     }
 
     /// Builds a fresh send queue from whatever's currently sendable. Called
-    /// once when the user enters the send screen.
+    /// when the user enters the send screen with no queue — or with a
+    /// finished one, which previously dead-ended sending forever (the queue
+    /// was only ever cleared by a re-import). A finished run's outcomes are
+    /// snapshotted first so the Home dashboard's state survives.
     func startSendQueue() {
+        if let finished = queue, finished.isFinished, !finished.outcomes.isEmpty {
+            lastRunOutcomes = finished.outcomes
+        }
         queue = SendQueue(items: previews.filter(\.isSendable))
     }
 }
