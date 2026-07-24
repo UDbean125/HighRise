@@ -34,7 +34,7 @@ struct TestSendGuardTests {
 
     @Test("A malformed test address is rejected with actionable text")
     func rejectsBadAddress() {
-        let coordinator = HighRiseCoordinator()
+        let coordinator = HighRiseCoordinator.hermetic()
         coordinator.testRecipient = "not-an-email"
         coordinator.sendTestToSelf()
         #expect(coordinator.testSendResult?.succeeded == false)
@@ -43,7 +43,7 @@ struct TestSendGuardTests {
 
     @Test("A valid address with nothing ready to send is reported, not attempted")
     func requiresASendableSample() {
-        let coordinator = HighRiseCoordinator()
+        let coordinator = HighRiseCoordinator.hermetic()
         coordinator.testRecipient = "me@example.com"   // valid, but no contacts loaded
         coordinator.sendTestToSelf()
         #expect(coordinator.testSendResult?.succeeded == false)

@@ -55,7 +55,7 @@ enum ImportCleaner {
     }
 
     /// A before → after sample of one repaired value.
-    struct Example: Equatable {
+    struct Example: Equatable, Codable {
         let before: String
         let after: String
     }
@@ -256,8 +256,10 @@ enum ImportCleaner {
     // MARK: - Suggestions
 
     /// A repair worth offering but not assuming — applied only on request.
-    struct Suggestion: Equatable, Identifiable {
-        enum Kind: String {
+    /// Codable so accepted suggestions survive a quit (session restore
+    /// re-applies them in order — see `SessionStore`).
+    struct Suggestion: Equatable, Identifiable, Codable {
+        enum Kind: String, Codable {
             /// `laura@gmial.com` → `laura@gmail.com`
             case domainTypo
             /// `ACME HOLDINGS` / `jordan avery` → `Acme Holdings` / `Jordan Avery`

@@ -713,14 +713,30 @@ struct SendView: View {
 
     @ViewBuilder
     private var scheduleCard: some View {
+        if let missed = coordinator.missedScheduleDate {
+            HStack(spacing: 10) {
+                Image(systemName: "clock.badge.exclamationmark").font(.title3).foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("A scheduled send didn't run")
+                        .font(.headline)
+                    Text("It was set for \(missed.formatted(date: .abbreviated, time: .shortened)), but HighRise wasn't open at that time. Your list is restored — review it, then send or reschedule below.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Button("Dismiss") { coordinator.dismissMissedSchedule() }
+            }
+            .card()
+        }
         if let fireDate = coordinator.scheduledFireDate {
             HStack(spacing: 10) {
                 Image(systemName: "clock.badge.checkmark").font(.title3).foregroundStyle(Brand.accent)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Scheduled for \(fireDate.formatted(date: .abbreviated, time: .shortened))")
                         .font(.headline)
-                    Text("Keep this Mac awake and HighRise open until then.")
+                    Text("Keep this Mac awake and HighRise open until then — if you quit first, the schedule is saved and re-armed when you reopen HighRise.")
                         .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
                 Button("Cancel", role: .destructive) { coordinator.cancelSchedule() }
