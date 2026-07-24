@@ -29,7 +29,8 @@ struct HighRiseCoordinatorSessionTests {
         defer { try? FileManager.default.removeItem(at: directory) }
 
         let first = HighRiseCoordinator(sessionStore: SessionStore(directory: directory),
-                                           library: TemplateLibraryStore(directory: directory))
+                                           library: TemplateLibraryStore(directory: directory),
+                                           runLog: SendRunLogStore(directory: nil))
         await first.importCSV("""
         Name,Email,Company
         Ada,ada@gmial.com,Analytical Engines
@@ -47,7 +48,8 @@ struct HighRiseCoordinatorSessionTests {
         first.saveSessionNow()
 
         let second = HighRiseCoordinator(sessionStore: SessionStore(directory: directory),
-                                           library: TemplateLibraryStore(directory: directory))
+                                           library: TemplateLibraryStore(directory: directory),
+                                           runLog: SendRunLogStore(directory: nil))
         await waitForRestore(second, until: !second.isImporting && !second.contacts.isEmpty)
 
         #expect(second.contacts.count == 2)
@@ -67,7 +69,8 @@ struct HighRiseCoordinatorSessionTests {
 
         let fireDate = Date().addingTimeInterval(3600)
         let first = HighRiseCoordinator(sessionStore: SessionStore(directory: directory),
-                                           library: TemplateLibraryStore(directory: directory))
+                                           library: TemplateLibraryStore(directory: directory),
+                                           runLog: SendRunLogStore(directory: nil))
         await first.importCSV("Name,Email\nAda,ada@example.com")
         first.template = EmailTemplate(subject: "Hi {{Name}}", body: "Hello {{Name}}")
         first.scheduleSend(at: fireDate)
@@ -75,7 +78,8 @@ struct HighRiseCoordinatorSessionTests {
         first.saveSessionNow()
 
         let second = HighRiseCoordinator(sessionStore: SessionStore(directory: directory),
-                                           library: TemplateLibraryStore(directory: directory))
+                                           library: TemplateLibraryStore(directory: directory),
+                                           runLog: SendRunLogStore(directory: nil))
         await waitForRestore(second, until: second.isScheduled)
 
         #expect(second.scheduledFireDate == fireDate)
@@ -98,7 +102,8 @@ struct HighRiseCoordinatorSessionTests {
         SessionStore(directory: directory).save(snapshot)
 
         let coordinator = HighRiseCoordinator(sessionStore: SessionStore(directory: directory),
-                                           library: TemplateLibraryStore(directory: directory))
+                                           library: TemplateLibraryStore(directory: directory),
+                                           runLog: SendRunLogStore(directory: nil))
         await waitForRestore(coordinator, until: coordinator.missedScheduleDate != nil)
 
         #expect(coordinator.missedScheduleDate == missedDate)
@@ -121,7 +126,8 @@ struct HighRiseCoordinatorSessionTests {
         SessionStore(directory: directory).save(snapshot)
 
         let coordinator = HighRiseCoordinator(sessionStore: SessionStore(directory: directory),
-                                           library: TemplateLibraryStore(directory: directory))
+                                           library: TemplateLibraryStore(directory: directory),
+                                           runLog: SendRunLogStore(directory: nil))
         #expect(coordinator.selectedClient == .appleMail)
         #expect(coordinator.sendMode == .draft)
     }
@@ -129,7 +135,8 @@ struct HighRiseCoordinatorSessionTests {
     @Test("No saved session leaves a pristine coordinator")
     func freshLaunchIsPristine() async {
         let coordinator = HighRiseCoordinator(sessionStore: SessionStore(directory: temporaryDirectory()),
-                                              library: TemplateLibraryStore(directory: nil))
+                                              library: TemplateLibraryStore(directory: nil),
+                                              runLog: SendRunLogStore(directory: nil))
         #expect(coordinator.contacts.isEmpty)
         #expect(coordinator.missedScheduleDate == nil)
         #expect(!coordinator.isScheduled)

@@ -94,16 +94,22 @@ enum AppleScriptBuilder {
         }
         // Attachments are placed after the last paragraph of the content — the
         // documented-robust location for Mail, which attaches at a text position.
+        // The literal is parenthesized because `stringLiteral` renders interior
+        // newlines as a concatenation ("a" & linefeed & "b") and the unary
+        // `POSIX file` specifier binds tighter than `&` — unparenthesized, a
+        // newline-containing path evaluates to a list and the line errors.
         let attachmentLines = m.attachmentPaths.map {
-            "        make new attachment with properties {file name:(POSIX file \(stringLiteral($0)))} at after the last paragraph"
+            "        make new attachment with properties {file name:(POSIX file (\(stringLiteral($0))))} at after the last paragraph"
         }
         let extras = ccLines + bccLines + attachmentLines
         let recipientBlock = extras.isEmpty ? "" : "\n" + extras.joined(separator: "\n")
         // `sender` picks the From account; it must match a configured Mail account.
         let senderLine = m.sender.map { "\n    set sender of newMessage to \(stringLiteral($0))" } ?? ""
-        // `message signature` references a configured signature by name.
+        // `message signature` references a configured signature by name. The
+        // parentheses keep a concatenation-rendered literal (interior newline)
+        // as one string under the unary `signature` specifier.
         let signatureLine = m.signatureName.map {
-            "\n    set message signature of newMessage to signature \(stringLiteral($0))"
+            "\n    set message signature of newMessage to signature (\(stringLiteral($0)))"
         } ?? ""
 
         return """
@@ -137,8 +143,10 @@ enum AppleScriptBuilder {
         let bccLines = m.bcc.map {
             "    make new bcc recipient at newMessage with properties {email address:{address:\(stringLiteral($0))}}"
         }
+        // Parenthesized for the same newline-concatenation reason as the Mail
+        // attachment lines above.
         let attachmentLines = m.attachmentPaths.map {
-            "    make new attachment at newMessage with properties {file:(POSIX file \(stringLiteral($0)))}"
+            "    make new attachment at newMessage with properties {file:(POSIX file (\(stringLiteral($0))))}"
         }
         let extras = ccLines + bccLines + attachmentLines
         let recipientBlock = extras.isEmpty ? "" : "\n" + extras.joined(separator: "\n")

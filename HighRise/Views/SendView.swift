@@ -563,6 +563,16 @@ struct SendView: View {
         try? coordinator.resultsReportCSV().write(to: url, atomically: true, encoding: .utf8)
     }
 
+    private func exportIncompleteRunReport() {
+        guard let csv = coordinator.incompleteRunReportCSV() else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "HighRise-interrupted-run.csv"
+        panel.allowedContentTypes = [.commaSeparatedText]
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        try? csv.write(to: url, atomically: true, encoding: .utf8)
+    }
+
     private func addAttachments() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
@@ -713,6 +723,22 @@ struct SendView: View {
 
     @ViewBuilder
     private var scheduleCard: some View {
+        if let interrupted = coordinator.incompleteLastRun {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill").font(.title3).foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Your last run ended early")
+                        .font(.headline)
+                    Text("\(interrupted.deliveredCount) of \(interrupted.total) \(interrupted.mode == "send" ? "sent" : "drafted") before HighRise closed. To avoid emailing anyone twice, export the report to see exactly who was already reached before running this list again.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Button("Export Report…") { exportIncompleteRunReport() }
+                Button("Dismiss") { coordinator.dismissIncompleteRunNotice() }
+            }
+            .card()
+        }
         if let missed = coordinator.missedScheduleDate {
             HStack(spacing: 10) {
                 Image(systemName: "clock.badge.exclamationmark").font(.title3).foregroundStyle(.orange)

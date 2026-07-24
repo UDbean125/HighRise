@@ -9,6 +9,7 @@ extension HighRiseCoordinator {
     /// machine — and never write one either.
     static func hermetic() -> HighRiseCoordinator {
         HighRiseCoordinator(sessionStore: SessionStore(directory: nil),
-                            library: TemplateLibraryStore(directory: nil))
+                            library: TemplateLibraryStore(directory: nil),
+                            runLog: SendRunLogStore(directory: nil))
     }
 }
