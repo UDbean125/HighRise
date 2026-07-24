@@ -59,7 +59,7 @@ targets:
         PRODUCT_NAME: HighRise
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_FILE: HighRise/Info.plist
-        CODE_SIGN_ENTITLEMENTS: HighRise/HighRise.entitlements
+        CODE_SIGN_ENTITLEMENTS: $(SRCROOT)/HighRise/HighRise.entitlements
         GENERATE_INFOPLIST_FILE: NO
         ENABLE_HARDENED_RUNTIME: YES
         LD_RUNPATH_SEARCH_PATHS:
@@ -88,7 +88,7 @@ targets:
         # unaffected by this.
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_FILE: HighRise/Info.plist
-        CODE_SIGN_ENTITLEMENTS: HighRise/HighRise-MAS.entitlements
+        CODE_SIGN_ENTITLEMENTS: $(SRCROOT)/HighRise/HighRise-MAS.entitlements
         GENERATE_INFOPLIST_FILE: NO
         ENABLE_HARDENED_RUNTIME: YES
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: MAS_BUILD
