@@ -130,7 +130,7 @@ struct AppleScriptBuilderTests {
                                       subject: "S", body: "B", isHTML: false,
                                       signatureName: "Work")
         let script = AppleScriptBuilder.script(for: withSig, client: .appleMail, mode: .draft)
-        #expect(script.contains("set message signature of newMessage to signature \"Work\""))
+        #expect(script.contains("set message signature of newMessage to signature (\"Work\")"))
 
         let noSig = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
                                     subject: "S", body: "B", isHTML: false)
@@ -143,7 +143,7 @@ struct AppleScriptBuilderTests {
                                   subject: "S", body: "B", isHTML: false,
                                   attachmentPaths: ["/Users/me/Q3 Report.pdf"])
         let script = AppleScriptBuilder.script(for: msg, client: .appleMail, mode: .draft)
-        #expect(script.contains("make new attachment with properties {file name:(POSIX file \"/Users/me/Q3 Report.pdf\")} at after the last paragraph"))
+        #expect(script.contains("make new attachment with properties {file name:(POSIX file (\"/Users/me/Q3 Report.pdf\"))} at after the last paragraph"))
     }
 
     @Test("Outlook attaches each file via an escaped POSIX path")
@@ -152,7 +152,32 @@ struct AppleScriptBuilderTests {
                                   subject: "S", body: "B", isHTML: false,
                                   attachmentPaths: ["/Users/me/invoice.pdf"])
         let script = AppleScriptBuilder.script(for: msg, client: .outlook, mode: .draft)
-        #expect(script.contains("make new attachment at newMessage with properties {file:(POSIX file \"/Users/me/invoice.pdf\")}"))
+        #expect(script.contains("make new attachment at newMessage with properties {file:(POSIX file (\"/Users/me/invoice.pdf\"))}"))
+    }
+
+    @Test("A newline-containing attachment path stays one POSIX file argument")
+    func newlineAttachmentPathStaysOneArgument() {
+        // stringLiteral renders interior newlines as a concatenation
+        // ("a" & linefeed & "b"); the unary `POSIX file` specifier binds
+        // tighter than `&`, so without the wrapping parens the expression
+        // evaluates to a 3-item list and `make new attachment` errors at
+        // runtime — after the invisible outgoing message was already created.
+        let msg = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                  subject: "S", body: "B", isHTML: false,
+                                  attachmentPaths: ["/tmp/odd\nname.pdf"])
+        let mail = AppleScriptBuilder.script(for: msg, client: .appleMail, mode: .draft)
+        #expect(mail.contains("POSIX file (\"/tmp/odd\" & linefeed & \"name.pdf\")"))
+        let outlook = AppleScriptBuilder.script(for: msg, client: .outlook, mode: .draft)
+        #expect(outlook.contains("POSIX file (\"/tmp/odd\" & linefeed & \"name.pdf\")"))
+    }
+
+    @Test("A newline-containing signature name stays one signature argument")
+    func newlineSignatureNameStaysOneArgument() {
+        let msg = ComposedMessage(recipientEmail: "a@b.com", recipientName: "A",
+                                  subject: "S", body: "B", isHTML: false,
+                                  signatureName: "Line1\nLine2")
+        let script = AppleScriptBuilder.script(for: msg, client: .appleMail, mode: .draft)
+        #expect(script.contains("signature (\"Line1\" & linefeed & \"Line2\")"))
     }
 
     @Test("No attachment verbs are emitted when there are none")

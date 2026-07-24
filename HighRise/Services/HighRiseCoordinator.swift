@@ -249,6 +249,15 @@ final class HighRiseCoordinator: ObservableObject {
     @Published private(set) var sendProgress: Double = 0
     @Published private(set) var outcomes: [SendOutcome] = []
 
+    /// The journal of a previous run that ended without finishing — the app
+    /// quit or crashed mid-run. Surfaced on the Send screen so the user can
+    /// see exactly who was already reached before sending the list again
+    /// (the in-memory `outcomes` from that run are gone). One-shot notice;
+    /// dismissing marks the journal finished.
+    @Published private(set) var incompleteLastRun: SendRunLog?
+    /// The live journal of the current run, mirrored to disk per recipient.
+    private var currentRunJournal: SendRunLog?
+
     /// Set when a run stopped itself early after too many consecutive
     /// delivery failures (see `ThrottlePolicy.stopOnRepeatedFailures`), rather
     /// than the whole queue's message just naturally ending. Cleared at the
@@ -290,6 +299,9 @@ final class HighRiseCoordinator: ObservableObject {
     private var scheduledQueue: [MergePreview] = []
     private var scheduleTask: Task<Void, Never>?
     var isScheduled: Bool { scheduledFireDate != nil }
+    /// How many recipients the armed schedule froze — for the quit-guard
+    /// alert (`scheduledQueue` itself is private).
+    var scheduledCount: Int { scheduledQueue.count }
 
     /// A send that was scheduled but never fired because the app wasn't
     /// running at its fire time (closing the window quits the app). One-shot
@@ -312,12 +324,19 @@ final class HighRiseCoordinator: ObservableObject {
     private let sessionStore: SessionStore
     private var isRestoringSession = false
 
-    /// Both stores are injectable so tests can isolate (or disable) the real
+    /// Durable per-recipient journal of the current/last send run — see
+    /// `SendRunLog` for why (quit mid-run must not enable double-sends).
+    private let runLog: SendRunLogStore
+
+    /// All stores are injectable so tests can isolate (or disable) the real
     /// Application Support persistence; the defaults are the live app's.
     init(sessionStore: SessionStore = SessionStore(),
-         library: TemplateLibraryStore = TemplateLibraryStore()) {
+         library: TemplateLibraryStore = TemplateLibraryStore(),
+         runLog: SendRunLogStore = SendRunLogStore()) {
         self.sessionStore = sessionStore
         self.library = library
+        self.runLog = runLog
+        incompleteLastRun = runLog.loadIncomplete()
         suppressionEntries = doNotContact.entries
         savedTemplates = library.templates
         // Restore the last working draft if one was autosaved.
@@ -1141,6 +1160,15 @@ final class HighRiseCoordinator: ObservableObject {
         outcomes = []
         stoppedEarlyReason = nil
         let mode = sendMode
+        // Journal the run to disk as it progresses: if the app dies mid-run
+        // (window close = quit), the on-disk record of who was reached is all
+        // that stands between the user and an accidental double-send. Starting
+        // a new run supersedes any lingering incomplete-run notice.
+        incompleteLastRun = nil
+        currentRunJournal = SendRunLog(startedAt: Date(),
+                                       mode: mode == .send ? "send" : "draft",
+                                       total: queue.count)
+        runLog.save(currentRunJournal!)
         let stopThreshold = ThrottlePolicy.consecutiveFailureStopThreshold
         Log.send.info("Starting \(mode == .send ? "send" : "draft", privacy: .public) of \(queue.count, privacy: .public) messages via \(self.selectedClient.rawValue, privacy: .public)")
 
@@ -1177,6 +1205,7 @@ final class HighRiseCoordinator: ObservableObject {
                 collected.append(SendOutcome(id: preview.id, contact: preview.contact, status: status))
                 outcomes = collected
                 sendProgress = Double(index + 1) / Double(queue.count)
+                journalOutcome(status, for: preview.contact)
 
                 if throttle.shouldStopEarly(consecutiveFailures: consecutiveFailures) {
                     let remaining = queue.count - collected.count
@@ -1193,14 +1222,59 @@ final class HighRiseCoordinator: ObservableObject {
                 }
             }
             isSending = false
+            finishRunJournal()
             Log.send.info("Run complete: \(collected.filter(\.isSuccess).count, privacy: .public)/\(queue.count, privacy: .public) succeeded")
         }
+    }
+
+    /// Appends one delivery result to the on-disk run journal.
+    private func journalOutcome(_ status: SendOutcome.Status, for contact: Contact) {
+        guard currentRunJournal != nil else { return }
+        let label: String
+        var reason: String?
+        switch status {
+        case .sent:                  label = "sent"
+        case .drafted:               label = "drafted"
+        case .skipped(let why):      label = "skipped"; reason = why
+        case .failed(let why):       label = "failed";  reason = why
+        }
+        currentRunJournal?.records.append(SendRunLog.Record(
+            email: contact.email, name: contact.displayName,
+            status: label, reason: reason, at: Date()))
+        runLog.save(currentRunJournal!)
+    }
+
+    /// Marks the journal finished — the run ended by completing, stopping
+    /// early, or a deliberate cancel — so the next launch shows no
+    /// died-mid-run notice.
+    private func finishRunJournal() {
+        guard var journal = currentRunJournal else { return }
+        journal.finished = true
+        currentRunJournal = journal
+        runLog.save(journal)
+    }
+
+    /// CSV of the interrupted run's ledger, for the "who already got it"
+    /// export on the notice card.
+    func incompleteRunReportCSV() -> String? {
+        incompleteLastRun?.csv()
+    }
+
+    /// Acknowledges the died-mid-run notice (and marks the on-disk journal
+    /// finished so it doesn't reappear next launch).
+    func dismissIncompleteRunNotice() {
+        if var journal = incompleteLastRun {
+            journal.finished = true
+            runLog.save(journal)
+        }
+        incompleteLastRun = nil
     }
 
     func cancelSending() {
         sendTask?.cancel()
         sendTask = nil
         isSending = false
+        finishRunJournal()
         Log.send.info("Send cancelled by user")
     }
 
