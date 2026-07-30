@@ -12,10 +12,46 @@ final class MobileCoordinator: ObservableObject {
     /// restored on the next launch — see `MobileSessionStore`.
     private let sessionStore: MobileSessionStore
 
-    /// Injectable so tests never read or write the real container.
-    init(sessionStore: MobileSessionStore = MobileSessionStore()) {
+    /// The user's own saved templates — the same on-device library type the
+    /// Mac uses, so a template saved here behaves identically there.
+    private let library: TemplateLibraryStore
+    @Published private(set) var savedTemplates: [SavedTemplate] = []
+
+    /// Both stores are injectable so tests never read or write the real
+    /// container.
+    init(sessionStore: MobileSessionStore = MobileSessionStore(),
+         library: TemplateLibraryStore = TemplateLibraryStore()) {
         self.sessionStore = sessionStore
+        self.library = library
+        savedTemplates = library.templates
         restoreSession()
+    }
+
+    // MARK: - Saved templates
+
+    /// Saves the working template under `name`, replacing a same-named one.
+    func saveCurrentTemplate(as name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        library.save(template, as: trimmed)
+        savedTemplates = library.templates
+    }
+
+    func loadTemplate(_ saved: SavedTemplate) {
+        template = saved.template
+        refreshPreviews()
+        saveSession()
+    }
+
+    func deleteTemplate(_ saved: SavedTemplate) {
+        library.delete(id: saved.id)
+        savedTemplates = library.templates
+    }
+
+    /// Whether there's anything worth saving yet.
+    var canSaveTemplate: Bool {
+        !template.subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !template.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     @Published var contacts: [Contact] = []

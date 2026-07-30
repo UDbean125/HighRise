@@ -13,6 +13,8 @@ struct TemplateEditorView: View {
 
     @State private var showingStarters = false
     @State private var showingFields = false
+    @State private var showingSaveDialog = false
+    @State private var newTemplateName = ""
     /// Which text the field palette inserts into.
     @State private var insertTarget: InsertTarget = .body
 
@@ -27,6 +29,7 @@ struct TemplateEditorView: View {
     var body: some View {
         Form {
             starterSection
+            savedTemplatesSection
             subjectSection
             bodySection
             formatSection
@@ -46,6 +49,16 @@ struct TemplateEditorView: View {
             MergeFieldSheet(columns: coordinator.importedHeaders) { token in
                 insert(token)
             }
+        }
+        .alert("Save this template", isPresented: $showingSaveDialog) {
+            TextField("Name it, e.g. Spring outreach", text: $newTemplateName)
+            Button("Save") {
+                coordinator.saveCurrentTemplate(as: newTemplateName)
+                newTemplateName = ""
+            }
+            Button("Cancel", role: .cancel) { newTemplateName = "" }
+        } message: {
+            Text("It stays on this device, ready to reuse. Saving under a name you already used replaces it.")
         }
         .safeAreaInset(edge: .bottom) {
             NavigationLink("Next: Review (\(coordinator.sendableCount) ready)") {
@@ -68,6 +81,40 @@ struct TemplateEditorView: View {
             }
         } footer: {
             Text("Ready-made emails for outreach, meetings, invoices, renewals, announcements, and hiring — each already wired up with merge fields you can edit.")
+        }
+    }
+
+    /// Your own templates, saved on this device — the same library the Mac
+    /// keeps, so anything saved here reads identically there.
+    @ViewBuilder
+    private var savedTemplatesSection: some View {
+        Section("My templates") {
+            Button {
+                showingSaveDialog = true
+            } label: {
+                Label("Save this template", systemImage: "square.and.arrow.down")
+            }
+            .disabled(!coordinator.canSaveTemplate)
+
+            ForEach(coordinator.savedTemplates.sorted { $0.savedAt > $1.savedAt }) { saved in
+                Button {
+                    coordinator.loadTemplate(saved)
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(saved.name).foregroundStyle(.primary)
+                        Text(saved.template.subject.isEmpty ? "No subject" : saved.template.subject)
+                            .font(.footnote).foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                .swipeActions {
+                    Button(role: .destructive) {
+                        coordinator.deleteTemplate(saved)
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                }
+            }
         }
     }
 

@@ -124,7 +124,9 @@ targets:
       - path: HighRise/Models/RecipientTable.swift
       - path: HighRise/Models/FieldSynonyms.swift
       - path: HighRise/Models/StarterTemplate.swift
+      - path: HighRise/Models/SavedTemplate.swift
       - path: HighRise/Models/MergeFieldCatalog.swift
+      - path: HighRise/Services/TemplateLibraryStore.swift
       - path: HighRise/Services/ContentLinter.swift
       - path: HighRise/Services/GreetingCheck.swift
       - path: HighRise/Services/PlaceholderCheck.swift
