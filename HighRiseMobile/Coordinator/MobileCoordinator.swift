@@ -17,15 +17,58 @@ final class MobileCoordinator: ObservableObject {
     private let library: TemplateLibraryStore
     @Published private(set) var savedTemplates: [SavedTemplate] = []
 
-    /// Both stores are injectable so tests never read or write the real
+    /// The do-not-contact list. Same store the Mac uses, so an address
+    /// suppressed on either device is honored on both — without it, a list
+    /// sent from the phone would email people who asked not to be contacted.
+    private let doNotContact: DoNotContactStore
+    @Published private(set) var suppressionEntries: [SuppressionEntry] = []
+
+    /// Every store is injectable so tests never read or write the real
     /// container.
     init(sessionStore: MobileSessionStore = MobileSessionStore(),
-         library: TemplateLibraryStore = TemplateLibraryStore()) {
+         library: TemplateLibraryStore = TemplateLibraryStore(),
+         doNotContact: DoNotContactStore = DoNotContactStore()) {
         self.sessionStore = sessionStore
         self.library = library
+        self.doNotContact = doNotContact
         savedTemplates = library.templates
+        suppressionEntries = doNotContact.entries
         restoreSession()
     }
+
+    // MARK: - Do-not-contact
+
+    /// Adds an address to the do-not-contact list. Returns false on invalid
+    /// or already-present input so the UI can say so.
+    @discardableResult
+    func suppressAddress(_ address: String, note: String? = nil) -> Bool {
+        let added = doNotContact.addAddress(address, note: note)
+        if added {
+            suppressionEntries = doNotContact.entries
+            refreshPreviews()
+        }
+        return added
+    }
+
+    /// Adds a whole domain (e.g. `acme.com`).
+    @discardableResult
+    func suppressDomain(_ domain: String, note: String? = nil) -> Bool {
+        let added = doNotContact.addDomain(domain, note: note)
+        if added {
+            suppressionEntries = doNotContact.entries
+            refreshPreviews()
+        }
+        return added
+    }
+
+    func removeSuppression(_ entry: SuppressionEntry) {
+        doNotContact.remove(entry)
+        suppressionEntries = doNotContact.entries
+        refreshPreviews()
+    }
+
+    /// How many of the current recipients are held back by the list.
+    var suppressedCount: Int { previews.filter(\.isSuppressed).count }
 
     // MARK: - Saved templates
 
@@ -240,7 +283,13 @@ final class MobileCoordinator: ObservableObject {
     }
 
     func refreshPreviews() {
-        previews = TemplateMergeEngine.mergeAll(template: template, contacts: contacts)
+        // Passing the suppression check is what actually enforces the
+        // do-not-contact list — without it a suppressed address merges as
+        // sendable and goes out.
+        previews = TemplateMergeEngine.mergeAll(
+            template: template,
+            contacts: contacts,
+            isSuppressed: { [doNotContact] in doNotContact.isSuppressed($0.email) })
     }
 
     // MARK: - Session persistence

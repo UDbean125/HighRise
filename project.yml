@@ -125,8 +125,13 @@ targets:
       - path: HighRise/Models/FieldSynonyms.swift
       - path: HighRise/Models/StarterTemplate.swift
       - path: HighRise/Models/SavedTemplate.swift
+      - path: HighRise/Models/SuppressionEntry.swift
       - path: HighRise/Models/MergeFieldCatalog.swift
       - path: HighRise/Services/TemplateLibraryStore.swift
+      - path: HighRise/Services/DoNotContactStore.swift
+      # DoNotContactStore logs through the shared `Log` (os.Logger works on
+      # iOS too), so the logging shim comes along with it.
+      - path: HighRise/Services/Logging.swift
       - path: HighRise/Services/ContentLinter.swift
       - path: HighRise/Services/GreetingCheck.swift
       - path: HighRise/Services/PlaceholderCheck.swift
