@@ -129,6 +129,35 @@ jobs:
       - name: Check out
         uses: actions/checkout@v5
 
+      - name: Starter-template catalog matches the Swift source
+        shell: bash
+        run: python3 Tools/export-templates.py --check
+
+      - name: Template browser under Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          # Unfiltered listing
+          $all = & .\Windows\HighRise-Templates.ps1 *>&1 | Out-String
+          Write-Host $all
+          if ($all -notlike '*templates.*') { throw 'Template listing produced no summary' }
+
+          # Industry + audience narrowing, then save one and merge with it.
+          $filtered = & .\Windows\HighRise-Templates.ps1 -Industry Construction -Audience Candidates *>&1 | Out-String
+          Write-Host $filtered
+          if ($filtered -notlike '*construction-crew-hiring*') { throw 'Industry/audience filter lost its tailored template' }
+
+          $search = & .\Windows\HighRise-Templates.ps1 -Search 'invoice' *>&1 | Out-String
+          if ($search -notlike '*invoice-reminder*') { throw 'Search did not find the invoice reminder' }
+
+          $tpl = Join-Path $env:RUNNER_TEMP 'picked-template.txt'
+          & .\Windows\HighRise-Templates.ps1 -Id construction-crew-hiring -Save $tpl *>&1 | Out-String | Write-Host
+          if (-not (Test-Path -LiteralPath $tpl)) { throw 'Saving a starter template produced no file' }
+
+          # The saved template must actually merge - that is the whole point.
+          $merged = & .\Windows\HighRise-Merge.ps1 -Csv .\Examples\sample-recipients.csv -Template $tpl -DryRun *>&1 | Out-String
+          Write-Host $merged
+          if ($merged -like '*{{*') { throw 'A raw placeholder survived the merge of a starter template' }
+
       - name: Dry run under Windows PowerShell 5.1
         shell: powershell
         run: |
