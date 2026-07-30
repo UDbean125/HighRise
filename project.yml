@@ -23,10 +23,11 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    # 1.0.1: the Mail-automation entitlement + stability fixes (PRs #76–#80).
-    # The live macOS 1.0 (64) lacks com.apple.security.automation.apple-events,
-    # so store customers can't drive Mail — this version ships the fix.
-    MARKETING_VERSION: "1.0.1"
+    # 1.1: the template gallery's industry/audience dropdowns + 6 tailored
+    # starters (PR #82). Bumped past 1.0.1 because that macOS train is
+    # APPROVED and closed — an upload still versioned 1.0.1 bounces with
+    # ITMS-90062/90186 (which is exactly what Cloud build 81 did).
+    MARKETING_VERSION: "1.1"
     # Apple already has Builds 42, 46, 49, and 51 for version 1.0 on the App
     # Store Connect record — all unsandboxed ITMS-90296 rejections. 42/46/49
     # were the plain `HighRise` scheme; 51 came from the STALE external-drive
