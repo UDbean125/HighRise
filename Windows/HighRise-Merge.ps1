@@ -192,31 +192,47 @@ function Get-DoNotContactPath {
 
 function Import-DoNotContact {
     param([string]$Path)
-    $result = [pscustomobject]@{ Addresses = @{}; Domains = @{}; Count = 0 }
-    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return $result }
-    try {
-        $raw = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
-        if (-not $raw.Trim()) { return $result }
-        $entries = @($raw | ConvertFrom-Json)
-    } catch {
-        # A corrupt list must never silently mean "email everyone" - say so
-        # loudly and stop, rather than sending to someone who opted out.
-        throw "The do-not-contact list at $Path could not be read: $($_.Exception.Message)"
-    }
-    foreach ($e in $entries) {
-        $value = ([string]$e.value).Trim().ToLowerInvariant()
-        if (-not $value) { continue }
-        switch (([string]$e.kind).ToLowerInvariant()) {
-            'address' { $result.Addresses[$value] = $true; $result.Count++ }
-            'domain'  { $result.Domains[$value.TrimStart('@')] = $true; $result.Count++ }
+    # Deliberately NOT a property called Count: PowerShell exposes an
+    # intrinsic .Count on every object, so a note property of that name never
+    # sticks and the list silently reads as empty - which would mean emailing
+    # people who opted out. The hashtables carry their own real counts.
+    $addresses = @{}
+    $domains = @{}
+    if ($Path -and (Test-Path -LiteralPath $Path)) {
+        try {
+            $raw = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
+            if ($null -ne $raw) {
+                $raw = $raw.TrimStart([char]0xFEFF, [char]0xFFFE).Trim()
+            }
+            $entries = if ($raw) { @(ConvertFrom-Json -InputObject $raw) } else { @() }
+        } catch {
+            # A corrupt list must never silently mean "email everyone" - say so
+            # loudly and stop, rather than sending to someone who opted out.
+            throw "The do-not-contact list at $Path could not be read: $($_.Exception.Message)"
+        }
+        foreach ($e in $entries) {
+            if ($null -eq $e) { continue }
+            $value = ([string]$e.value).Trim().ToLowerInvariant()
+            if (-not $value) { continue }
+            switch (([string]$e.kind).ToLowerInvariant()) {
+                'address' { $addresses[$value] = $true }
+                'domain'  { $domains[$value.TrimStart('@')] = $true }
+            }
         }
     }
-    return $result
+    return [pscustomobject]@{ Addresses = $addresses; Domains = $domains }
+}
+
+function Get-SuppressionCount {
+    param($List)
+    if (-not $List) { return 0 }
+    return ($List.Addresses.Count + $List.Domains.Count)
 }
 
 function Test-Suppressed {
     param($List, [string]$Email)
-    if (-not $List -or $List.Count -eq 0) { return $false }
+    if (-not $List) { return $false }
+    if ((Get-SuppressionCount $List) -eq 0) { return $false }
     $address = ([string]$Email).Trim().ToLowerInvariant()
     if (-not $address) { return $false }
     if ($List.Addresses.ContainsKey($address)) { return $true }
@@ -706,8 +722,9 @@ $script:SuppressionList = $null
 if (-not $IgnoreDoNotContact) {
     $dncPath = Get-DoNotContactPath -Override $DoNotContact
     $script:SuppressionList = Import-DoNotContact -Path $dncPath
-    if ($script:SuppressionList.Count -gt 0) {
-        Write-Host "Do-not-contact list: $($script:SuppressionList.Count) entr(y/ies) from $dncPath"
+    $dncCount = Get-SuppressionCount $script:SuppressionList
+    if ($dncCount -gt 0) {
+        Write-Host "Do-not-contact list: $dncCount entr(y/ies) from $dncPath"
     } elseif ($DoNotContact) {
         # An explicitly named list that turned out to be empty is worth saying
         # out loud - it usually means the wrong path.
