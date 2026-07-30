@@ -167,7 +167,11 @@ jobs:
 
           # Block one person and one whole domain.
           & .\Windows\HighRise-DoNotContact.ps1 -Path $list -Add 'sam@acme.com' -Note 'Opted out' *>&1 | Write-Host
+          Write-Host "--- list file after first add ---"
+          Get-Content -LiteralPath $list -Raw | Write-Host
           & .\Windows\HighRise-DoNotContact.ps1 -Path $list -Add 'initech.io' *>&1 | Write-Host
+          Write-Host "--- list file after second add ---"
+          Get-Content -LiteralPath $list -Raw | Write-Host
 
           $listing = & .\Windows\HighRise-DoNotContact.ps1 -Path $list *>&1 | Out-String
           Write-Host $listing

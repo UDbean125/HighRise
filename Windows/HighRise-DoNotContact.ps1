@@ -45,21 +45,38 @@ $listPath = if ($Path) { $Path }
 $EmailRegex = [regex]'^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$'
 
 function Read-List {
-    if (-not (Test-Path -LiteralPath $listPath)) { return @() }
+    if (-not (Test-Path -LiteralPath $listPath)) { return ,@() }
     $raw = Get-Content -LiteralPath $listPath -Raw -Encoding UTF8
-    if (-not $raw.Trim()) { return @() }
-    try { return @($raw | ConvertFrom-Json) }
+    if ($null -eq $raw) { return ,@() }
+    # A UTF-8 BOM ahead of the '[' makes ConvertFrom-Json fail on 5.1.
+    $raw = $raw.TrimStart([char]0xFEFF, [char]0xFFFE).Trim()
+    if (-not $raw) { return ,@() }
+    try { $parsed = ConvertFrom-Json -InputObject $raw }
     catch { throw "The list at $listPath is not valid JSON: $($_.Exception.Message)" }
+    # ConvertFrom-Json hands back a single object (not an array) when the file
+    # holds one entry, so normalize to an array either way.
+    return ,@($parsed)
 }
 
 function Write-List {
-    param($Entries)
+    param([object[]]$Entries)
     $dir = Split-Path -Parent $listPath
     if ($dir -and -not (Test-Path -LiteralPath $dir)) {
         [void](New-Item -ItemType Directory -Path $dir -Force)
     }
-    # An empty array must still round-trip as [], not as nothing.
-    $json = if (@($Entries).Count -eq 0) { '[]' } else { ConvertTo-Json -InputObject @($Entries) -Depth 4 }
+    $items = @($Entries)
+    if ($items.Count -eq 0) {
+        $json = '[]'
+    } else {
+        $json = ConvertTo-Json -InputObject $items -Depth 4
+        # Windows PowerShell 5.1's ConvertTo-Json unwraps a one-element array
+        # into a bare object. Left alone, saving the first entry writes {...}
+        # instead of [{...}] and the next save reads nothing back, silently
+        # dropping it — so re-wrap it by hand.
+        if ($items.Count -eq 1 -and -not $json.TrimStart().StartsWith('[')) {
+            $json = '[' + $json + ']'
+        }
+    }
     Set-Content -LiteralPath $listPath -Value $json -Encoding UTF8
 }
 
