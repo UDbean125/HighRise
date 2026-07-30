@@ -44,22 +44,47 @@ $listPath = if ($Path) { $Path }
 
 $EmailRegex = [regex]'^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$'
 
+# Emits entries one at a time rather than returning an array. Returning an
+# array from a PowerShell function is a trap: `return ,@(...)` hands back an
+# array wrapped in an array, and each save then nests the whole previous list
+# inside itself instead of appending to it. Callers collect with @(Read-List),
+# which yields an empty array when nothing is emitted.
 function Read-List {
-    if (-not (Test-Path -LiteralPath $listPath)) { return @() }
+    if (-not (Test-Path -LiteralPath $listPath)) { return }
     $raw = Get-Content -LiteralPath $listPath -Raw -Encoding UTF8
-    if (-not $raw.Trim()) { return @() }
-    try { return @($raw | ConvertFrom-Json) }
+    if ($null -eq $raw) { return }
+    # A UTF-8 BOM ahead of the '[' makes ConvertFrom-Json fail on 5.1.
+    $raw = $raw.TrimStart([char]0xFEFF, [char]0xFFFE).Trim()
+    if (-not $raw) { return }
+    try { $parsed = ConvertFrom-Json -InputObject $raw }
     catch { throw "The list at $listPath is not valid JSON: $($_.Exception.Message)" }
+    # ConvertFrom-Json hands back a bare object when the file holds one entry.
+    # Anything without a kind and value is skipped rather than trusted.
+    foreach ($item in @($parsed)) {
+        if ($null -eq $item) { continue }
+        if (-not $item.PSObject.Properties['kind']) { continue }
+        if (-not $item.PSObject.Properties['value']) { continue }
+        if (-not ([string]$item.value).Trim()) { continue }
+        $item
+    }
 }
 
 function Write-List {
-    param($Entries)
+    param([object[]]$Entries)
     $dir = Split-Path -Parent $listPath
     if ($dir -and -not (Test-Path -LiteralPath $dir)) {
         [void](New-Item -ItemType Directory -Path $dir -Force)
     }
-    # An empty array must still round-trip as [], not as nothing.
-    $json = if (@($Entries).Count -eq 0) { '[]' } else { ConvertTo-Json -InputObject @($Entries) -Depth 4 }
+    $items = @($Entries | Where-Object { $null -ne $_ })
+    if ($items.Count -eq 0) {
+        $json = '[]'
+    } else {
+        $json = ConvertTo-Json -InputObject $items -Depth 4
+        # Windows PowerShell 5.1's ConvertTo-Json unwraps a one-element array
+        # into a bare object, so re-wrap it to keep the file a JSON array the
+        # Mac and iPhone apps can decode.
+        if (-not $json.TrimStart().StartsWith('[')) { $json = '[' + $json + ']' }
+    }
     Set-Content -LiteralPath $listPath -Value $json -Encoding UTF8
 }
 
