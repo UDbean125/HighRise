@@ -21,7 +21,7 @@ buttons — **Preview**, **Create Drafts**, **Send** — instead of typed comman
 
 1. Make sure these files are together in one folder: **`HighRise.cmd`**,
    **`HighRise-GUI.ps1`**, **`HighRise-Merge.ps1`**, **`HighRise-Templates.ps1`**,
-   and **`templates.json`**.
+   **`HighRise-DoNotContact.ps1`**, and **`templates.json`**.
 2. **Double-click `HighRise.cmd`.** The HighRise window opens.
 3. In the window: **Browse** to your recipients list, then click **Starter
    templates…** to pick one of the 95 ready-made templates the Mac and iPhone
@@ -36,6 +36,36 @@ Want it even faster? Right-click `HighRise.cmd` → **Send to ▸ Desktop (creat
 shortcut)**, then rename the desktop shortcut to "HighRise" — now it's a
 double-click icon on your desktop. (You can also right-click that shortcut →
 **Pin to taskbar**.)
+
+## Do not contact
+
+Some people ask not to be emailed. HighRise keeps a list of those addresses —
+and whole domains — and **holds them back from every merge automatically**.
+Your CSV is never edited; the row simply doesn't send.
+
+It's the same list the Mac and iPhone apps keep, in the same file format, so
+you can copy `do-not-contact.json` between machines and it behaves identically.
+By default it lives at `%APPDATA%\HighRise\do-not-contact.json`.
+
+**In the window:** click **Do not contact** to see who's blocked, add someone,
+or unblock them.
+
+**From the command line:**
+
+```powershell
+.\HighRise-DoNotContact.ps1                              # see the list
+.\HighRise-DoNotContact.ps1 -Add someone@example.com     # block one person
+.\HighRise-DoNotContact.ps1 -Add acme.com -Note "Asked"  # block a whole company
+.\HighRise-DoNotContact.ps1 -Test someone@example.com    # would this be blocked?
+.\HighRise-DoNotContact.ps1 -Remove someone@example.com  # let them through again
+```
+
+Every merge reports how many entries it loaded, and each held-back row says
+so in the results. To use a list stored somewhere else — a shared drive, or
+one copied off a Mac — pass `-DoNotContact <path>` to either script.
+
+If the list file is corrupt, the merge **stops** rather than continuing: a
+list it can't read must never silently become "email everyone."
 
 ## Starter templates
 
@@ -179,11 +209,11 @@ One Windows-flavored difference: `date:` patterns are .NET format strings
 
 ## What the Windows tool doesn't do
 
-The Mac app is the full product; this is the merge-and-send core plus the
-starter-template catalog. Not here: `.xlsx`/`.docx`/PDF import (export to CSV
-instead), Apple/Outlook contacts import, the do-not-contact list, A/B template
-variants, scheduled send, merge-to-PDF, and the unsubscribe footer. If you need
-one of these on Windows, open an issue.
+The Mac app is the full product; this is the merge-and-send core, the
+starter-template catalog, and the do-not-contact list. Not here:
+`.xlsx`/`.docx`/PDF import (export to CSV instead), Apple/Outlook contacts
+import, A/B template variants, scheduled send, merge-to-PDF, and the
+unsubscribe footer. If you need one of these on Windows, open an issue.
 
 ## Troubleshooting
 

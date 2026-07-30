@@ -116,7 +116,14 @@ param(
     [switch]$Force,
     [switch]$DryRun,
     [int]$ThrottleSeconds = 0,
-    [string]$ReportCsv
+    [string]$ReportCsv,
+    # Path to the do-not-contact list. Defaults to the shared location
+    # %APPDATA%\HighRise\do-not-contact.json; point it at a Mac's exported
+    # file to use the same list.
+    [string]$DoNotContact,
+    # Ignore the do-not-contact list entirely. Deliberately awkward to reach:
+    # it exists for testing, not for routine sending.
+    [switch]$IgnoreDoNotContact
 )
 
 $ErrorActionPreference = 'Stop'
@@ -163,6 +170,62 @@ function Test-EmailAddress {
     if ($null -eq $Candidate) { return $false }
     $trimmed = $Candidate.Trim()
     return ($trimmed -ne '' -and $script:EmailRegex.IsMatch($trimmed))
+}
+
+# ---------------------------------------------------------------------------
+# Do-not-contact list (mirrors DoNotContactStore.swift)
+# ---------------------------------------------------------------------------
+#
+# Addresses and whole domains that must never be emailed. The Mac and iPhone
+# apps keep the same list in the same JSON shape - an array of
+# {kind, value, dateAdded, note} - so the file can be copied between machines
+# and behaves identically. Entries are already normalized (trimmed,
+# lowercased) by whichever app wrote them; we re-normalize on read anyway so a
+# hand-edited file still works.
+
+function Get-DoNotContactPath {
+    param([string]$Override)
+    if ($Override) { return $Override }
+    if ($env:APPDATA) { return (Join-Path $env:APPDATA 'HighRise\do-not-contact.json') }
+    return (Join-Path $HOME 'HighRise\do-not-contact.json')
+}
+
+function Import-DoNotContact {
+    param([string]$Path)
+    $result = [pscustomobject]@{ Addresses = @{}; Domains = @{}; Count = 0 }
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return $result }
+    try {
+        $raw = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
+        if (-not $raw.Trim()) { return $result }
+        $entries = @($raw | ConvertFrom-Json)
+    } catch {
+        # A corrupt list must never silently mean "email everyone" - say so
+        # loudly and stop, rather than sending to someone who opted out.
+        throw "The do-not-contact list at $Path could not be read: $($_.Exception.Message)"
+    }
+    foreach ($e in $entries) {
+        $value = ([string]$e.value).Trim().ToLowerInvariant()
+        if (-not $value) { continue }
+        switch (([string]$e.kind).ToLowerInvariant()) {
+            'address' { $result.Addresses[$value] = $true; $result.Count++ }
+            'domain'  { $result.Domains[$value.TrimStart('@')] = $true; $result.Count++ }
+        }
+    }
+    return $result
+}
+
+function Test-Suppressed {
+    param($List, [string]$Email)
+    if (-not $List -or $List.Count -eq 0) { return $false }
+    $address = ([string]$Email).Trim().ToLowerInvariant()
+    if (-not $address) { return $false }
+    if ($List.Addresses.ContainsKey($address)) { return $true }
+    $at = $address.IndexOf('@')
+    if ($at -ge 0) {
+        $domain = $address.Substring($at + 1)
+        if ($List.Domains.ContainsKey($domain)) { return $true }
+    }
+    return $false
 }
 
 # ---------------------------------------------------------------------------
@@ -638,6 +701,22 @@ if ($Attach.Count -gt 0) {
 }
 
 # 5. Merge every row (order preserved; first occurrence of an address wins).
+# Load the do-not-contact list first so every row is checked against it.
+$script:SuppressionList = $null
+if (-not $IgnoreDoNotContact) {
+    $dncPath = Get-DoNotContactPath -Override $DoNotContact
+    $script:SuppressionList = Import-DoNotContact -Path $dncPath
+    if ($script:SuppressionList.Count -gt 0) {
+        Write-Host "Do-not-contact list: $($script:SuppressionList.Count) entr(y/ies) from $dncPath"
+    } elseif ($DoNotContact) {
+        # An explicitly named list that turned out to be empty is worth saying
+        # out loud - it usually means the wrong path.
+        Write-Host "Do-not-contact list at $dncPath is empty."
+    }
+} else {
+    Write-Host "WARNING: -IgnoreDoNotContact was passed - the do-not-contact list is NOT being applied."
+}
+
 $previews = @()
 $seenEmails = New-Object System.Collections.Generic.HashSet[string]
 foreach ($row in $rows) {
@@ -667,12 +746,18 @@ foreach ($row in $rows) {
     $hasValidEmail = Test-EmailAddress $email
     $isDuplicate = $false
     if ($hasValidEmail) { $isDuplicate = -not $seenEmails.Add($email.ToLower()) }
+    $isSuppressed = Test-Suppressed -List $script:SuppressionList -Email $email
 
-    # Blocking mirrors MergePreview.blockingReason on the Mac.
+    # Blocking mirrors MergePreview.blockingReason on the Mac, in the same
+    # order - suppression sits right after an unusable address, ahead of
+    # missing data, so someone who opted out is reported as opted out rather
+    # than as a data problem.
     $reason = $null
     if (-not $hasValidEmail) {
         if ($email -eq '') { $reason = 'No email address.' }
         else { $reason = "Invalid email address: $email" }
+    } elseif ($isSuppressed) {
+        $reason = "On your do-not-contact list - $email is skipped."
     } elseif ($unresolved.Count -gt 0) {
         $reason = "Missing data for: $($unresolved -join ', ')"
     } elseif ($missingAttachments.Count -gt 0) {

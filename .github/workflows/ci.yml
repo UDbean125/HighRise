@@ -158,6 +158,56 @@ jobs:
           Write-Host $merged
           if ($merged -like '*{{*') { throw 'A raw placeholder survived the merge of a starter template' }
 
+      - name: Do-not-contact list is honored under Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $list = Join-Path $env:RUNNER_TEMP 'dnc.json'
+          $csv = '.\Examples\sample-recipients.csv'
+          $tpl = '.\Windows\Examples\sample-template.txt'
+
+          # Block one person and one whole domain.
+          & .\Windows\HighRise-DoNotContact.ps1 -Path $list -Add 'sam@acme.com' -Note 'Opted out' *>&1 | Write-Host
+          & .\Windows\HighRise-DoNotContact.ps1 -Path $list -Add 'initech.io' *>&1 | Write-Host
+
+          $listing = & .\Windows\HighRise-DoNotContact.ps1 -Path $list *>&1 | Out-String
+          Write-Host $listing
+          if ($listing -notlike '*2 blocked*') { throw 'Listing did not report both entries' }
+          if ($listing -notlike '*everyone @initech.io*') { throw 'Domain entry not shown as a domain' }
+
+          # -Test agrees with the list, including via the domain rule.
+          $t1 = & .\Windows\HighRise-DoNotContact.ps1 -Path $list -Test 'sam@acme.com' *>&1 | Out-String
+          if ($t1 -notlike '*BLOCKED*') { throw '-Test missed a blocked address' }
+          $t2 = & .\Windows\HighRise-DoNotContact.ps1 -Path $list -Test 'bob@initech.io' *>&1 | Out-String
+          if ($t2 -notlike '*BLOCKED*') { throw '-Test missed an address blocked by its domain' }
+          $t3 = & .\Windows\HighRise-DoNotContact.ps1 -Path $list -Test 'dana@toys.example' *>&1 | Out-String
+          if ($t3 -notlike '*Allowed*') { throw '-Test wrongly blocked an unlisted address' }
+
+          # The merge must hold both back - 3 sendable normally, 1 with these.
+          $merged = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $tpl -DoNotContact $list -DryRun *>&1 | Out-String
+          Write-Host $merged
+          if ($merged -notlike '*do-not-contact list*') { throw 'Merge did not report loading the list' }
+          if ($merged -notlike '*1 message(s) would be drafted, 4 blocked*') { throw "Suppressed rows were not held back: $merged" }
+          if ($merged -notlike '*sam@acme.com is skipped*') { throw 'Address suppression reason missing' }
+          if ($merged -notlike '*bob@initech.io is skipped*') { throw 'Domain suppression reason missing' }
+
+          # Unblocking restores them.
+          & .\Windows\HighRise-DoNotContact.ps1 -Path $list -Remove 'sam@acme.com' *>&1 | Write-Host
+          $after = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $tpl -DoNotContact $list -DryRun *>&1 | Out-String
+          if ($after -notlike '*2 message(s) would be drafted, 3 blocked*') { throw "Unblocking did not restore the recipient: $after" }
+
+          # The escape hatch works and announces itself.
+          $ignored = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $tpl -DoNotContact $list -IgnoreDoNotContact -DryRun *>&1 | Out-String
+          if ($ignored -notlike '*WARNING: -IgnoreDoNotContact*') { throw 'Ignoring the list was not announced' }
+          if ($ignored -notlike '*3 message(s) would be drafted, 2 blocked*') { throw 'IgnoreDoNotContact did not restore every recipient' }
+
+          # A corrupt list must stop the run, never quietly email everyone.
+          $bad = Join-Path $env:RUNNER_TEMP 'corrupt.json'
+          Set-Content -LiteralPath $bad -Value 'not json{{{' -Encoding UTF8
+          $failed = $false
+          try { & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $tpl -DoNotContact $bad -DryRun *>&1 | Out-String | Write-Host }
+          catch { $failed = $true }
+          if (-not $failed) { throw 'A corrupt do-not-contact list did not stop the run' }
+
       - name: Dry run under Windows PowerShell 5.1
         shell: powershell
         run: |

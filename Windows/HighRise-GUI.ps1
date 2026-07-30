@@ -109,10 +109,12 @@ $form.Controls.Add($outBox)
 $previewBtn = New-Button -Text '1. Preview (safe)' -X 15  -Y 570 -W 150 -H 34
 $draftBtn   = New-Button -Text '2. Create Drafts'  -X 175 -Y 570 -W 150 -H 34
 $sendBtn    = New-Button -Text 'Send Now...'       -X 335 -Y 570 -W 120 -H 34
-$outlookBtn = New-Button -Text 'Open Outlook'      -X 495 -Y 570 -W 120 -H 34
-$closeBtn   = New-Button -Text 'Close'             -X 625 -Y 570 -W 120 -H 34
+$outlookBtn = New-Button -Text 'Open Outlook'      -X 465 -Y 570 -W 110 -H 34
+$dncBtn     = New-Button -Text 'Do not contact'    -X 585 -Y 570 -W 130 -H 34
+$closeBtn   = New-Button -Text 'Close'             -X 725 -Y 570 -W 90  -H 34
 $previewBtn.Anchor = 'Bottom,Left'; $draftBtn.Anchor = 'Bottom,Left'
-$sendBtn.Anchor = 'Bottom,Left'; $outlookBtn.Anchor = 'Bottom,Left'; $closeBtn.Anchor = 'Bottom,Right'
+$sendBtn.Anchor = 'Bottom,Left'; $outlookBtn.Anchor = 'Bottom,Left'
+$dncBtn.Anchor = 'Bottom,Left'; $closeBtn.Anchor = 'Bottom,Right'
 $draftBtn.Font = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Bold)
 
 # ---------------------------------------------------------------------------
@@ -371,6 +373,116 @@ Best regards,
     }
 })
 
+# Do-not-contact manager --------------------------------------------------
+# The same list the merge honors and the Mac/iPhone apps keep. Without this,
+# a point-and-click user would have no way to act on "please stop emailing me".
+$dncBtn.Add_Click({
+    $dncScript = Join-Path $scriptDir 'HighRise-DoNotContact.ps1'
+    if (-not (Test-Path -LiteralPath $dncScript)) {
+        Show-Warn "Can't find HighRise-DoNotContact.ps1 in this folder:`n$scriptDir"
+        return
+    }
+    $listPath = if ($env:APPDATA) { Join-Path $env:APPDATA 'HighRise\do-not-contact.json' }
+                else { Join-Path $HOME 'HighRise\do-not-contact.json' }
+
+    $dlg = New-Object System.Windows.Forms.Form
+    $dlg.Text = 'Do Not Contact'
+    $dlg.Size = New-Object System.Drawing.Size(560, 480)
+    $dlg.StartPosition = 'CenterParent'
+    $dlg.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+
+    $help = New-Object System.Windows.Forms.Label
+    $help.Text = "These are never emailed. Enter one address, or a whole company domain like acme.com. Every merge holds matching rows back - your CSV is not changed."
+    $help.Location = New-Object System.Drawing.Point(15, 12)
+    $help.Size = New-Object System.Drawing.Size(510, 40)
+    $dlg.Controls.Add($help)
+
+    $entryBox = New-Object System.Windows.Forms.TextBox
+    $entryBox.Location = New-Object System.Drawing.Point(15, 58)
+    $entryBox.Size = New-Object System.Drawing.Size(330, 24)
+    $dlg.Controls.Add($entryBox)
+
+    $addBtn = New-Object System.Windows.Forms.Button
+    $addBtn.Text = 'Block'
+    $addBtn.Location = New-Object System.Drawing.Point(355, 57)
+    $addBtn.Size = New-Object System.Drawing.Size(80, 26)
+    $dlg.Controls.Add($addBtn)
+
+    $removeBtn = New-Object System.Windows.Forms.Button
+    $removeBtn.Text = 'Unblock'
+    $removeBtn.Location = New-Object System.Drawing.Point(443, 57)
+    $removeBtn.Size = New-Object System.Drawing.Size(82, 26)
+    $dlg.Controls.Add($removeBtn)
+
+    $dncList = New-Object System.Windows.Forms.ListBox
+    $dncList.Location = New-Object System.Drawing.Point(15, 96)
+    $dncList.Size = New-Object System.Drawing.Size(510, 300)
+    $dlg.Controls.Add($dncList)
+
+    $doneBtn = New-Object System.Windows.Forms.Button
+    $doneBtn.Text = 'Done'
+    $doneBtn.Location = New-Object System.Drawing.Point(435, 405)
+    $doneBtn.Size = New-Object System.Drawing.Size(90, 30)
+    $dlg.Controls.Add($doneBtn)
+
+    # Values parallel to the list rows, so Unblock knows what to remove.
+    $script:dncValues = @()
+
+    function Update-Dnc {
+        $script:dncValues = @()
+        $dncList.Items.Clear()
+        if (-not (Test-Path -LiteralPath $listPath)) {
+            $dncList.Items.Add('(nobody is blocked yet)') | Out-Null
+            return
+        }
+        try {
+            $raw = Get-Content -LiteralPath $listPath -Raw -Encoding UTF8
+            $entries = if ($raw.Trim()) { @($raw | ConvertFrom-Json) } else { @() }
+        } catch {
+            $dncList.Items.Add('(the list file could not be read)') | Out-Null
+            return
+        }
+        if (@($entries).Count -eq 0) {
+            $dncList.Items.Add('(nobody is blocked yet)') | Out-Null
+            return
+        }
+        foreach ($e in $entries) {
+            $label = if (([string]$e.kind).ToLowerInvariant() -eq 'domain') { "everyone @$($e.value)" } else { [string]$e.value }
+            if ($e.PSObject.Properties['note'] -and $e.note) { $label += "   -   $($e.note)" }
+            $dncList.Items.Add($label) | Out-Null
+            $script:dncValues += [string]$e.value
+        }
+    }
+
+    $addBtn.Add_Click({
+        $value = $entryBox.Text.Trim()
+        if (-not $value) { return }
+        $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $dncScript -Add $value 2>&1 | Out-String
+        if ($out -match 'not a valid') {
+            Show-Warn "'$value' is not a valid email address or domain.`n`nUse name@example.com to block one person, or example.com to block everyone there."
+        } else {
+            $entryBox.Text = ''
+        }
+        Update-Dnc
+    })
+
+    $removeBtn.Add_Click({
+        $i = $dncList.SelectedIndex
+        if ($i -lt 0 -or $i -ge $script:dncValues.Count) {
+            Show-Info 'Pick someone in the list first, then click Unblock.'
+            return
+        }
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $dncScript -Remove $script:dncValues[$i] 2>&1 | Out-Null
+        Update-Dnc
+    })
+
+    $doneBtn.Add_Click({ $dlg.Close() })
+    $entryBox.Add_KeyDown({ if ($_.KeyCode -eq 'Return') { $addBtn.PerformClick(); $_.SuppressKeyPress = $true } })
+
+    Update-Dnc
+    [void]$dlg.ShowDialog()
+})
+
 $outlookBtn.Add_Click({
     try { Start-Process outlook.exe } catch { Show-Warn "Couldn't launch Outlook automatically - open it from the Start menu and look in your Drafts folder." }
 })
@@ -380,7 +492,7 @@ $closeBtn.Add_Click({ $form.Close() })
 function Set-Busy {
     param([bool]$Busy)
     $form.Cursor = if ($Busy) { 'WaitCursor' } else { 'Default' }
-    foreach ($b in @($previewBtn, $draftBtn, $sendBtn, $csvBtn, $tplBtn, $tplNewBtn, $tplPickBtn)) { $b.Enabled = -not $Busy }
+    foreach ($b in @($previewBtn, $draftBtn, $sendBtn, $csvBtn, $tplBtn, $tplNewBtn, $tplPickBtn, $dncBtn)) { $b.Enabled = -not $Busy }
 }
 
 function Invoke-Merge {
