@@ -92,4 +92,74 @@ struct StarterTemplateCatalogTests {
                     "\(starter.id) references fields the sample can't fill: \(preview.unresolvedFields)")
         }
     }
+
+    // MARK: - Industry / audience filters
+
+    @Test("Every industry has at least one tailored starter")
+    func everyIndustryHasATailoredStarter() {
+        for industry in TemplateIndustry.allCases {
+            #expect(all.contains { $0.industries.contains(industry) },
+                    "No starter is written for “\(industry.rawValue)”")
+        }
+    }
+
+    @Test("Every audience has at least one tagged starter")
+    func everyAudienceHasAStarter() {
+        for audience in TemplateAudience.allCases {
+            #expect(all.contains { $0.audiences.contains(audience) },
+                    "No starter is addressed to “\(audience.rawValue)”")
+        }
+    }
+
+    @Test("No industry/audience combination empties the gallery")
+    func filtersNeverDeadEnd() {
+        // Neutral starters (empty tag sets) fit every filter, so whatever the
+        // user picks in the two dropdowns, something useful must remain.
+        for industry in TemplateIndustry.allCases {
+            for audience in TemplateAudience.allCases {
+                let groups = StarterTemplateCatalog.byCategory(industry: industry, audience: audience)
+                #expect(!groups.flatMap(\.templates).isEmpty,
+                        "\(industry.rawValue) + \(audience.rawValue) shows nothing")
+            }
+        }
+    }
+
+    @Test("Nil filters reproduce the full grouped catalog")
+    func nilFiltersAreIdentity() {
+        let unfiltered = StarterTemplateCatalog.byCategory(industry: nil, audience: nil)
+        #expect(unfiltered.flatMap(\.templates).count == all.count)
+        #expect(unfiltered.map(\.category) == StarterTemplateCatalog.byCategory.map(\.category))
+    }
+
+    @Test("Industry-tailored starters lead their category when that industry is chosen")
+    func tailoredStartersFloatToTheTop() {
+        for industry in TemplateIndustry.allCases {
+            for group in StarterTemplateCatalog.byCategory(industry: industry, audience: nil) {
+                // Once a neutral starter appears, no tailored one may follow it.
+                var seenNeutral = false
+                for template in group.templates {
+                    let tailored = template.industries.contains(industry)
+                    if !tailored { seenNeutral = true }
+                    #expect(!(tailored && seenNeutral),
+                            "\(template.id) is tailored for \(industry.rawValue) but sorted after neutral starters in “\(group.category)”")
+                }
+            }
+        }
+    }
+
+    @Test("A tagged starter fits its own tags and the no-filter state")
+    func fitsSemantics() {
+        let tagged = StarterTemplate(id: "x", name: "x", category: "Grow", systemImage: "x",
+                                     blurb: "x", subject: "s", body: "b",
+                                     audiences: [.prospects], industries: [.retail])
+        #expect(tagged.fits(industry: nil) && tagged.fits(audience: nil))
+        #expect(tagged.fits(industry: .retail) && tagged.fits(audience: .prospects))
+        #expect(!tagged.fits(industry: .health))
+        #expect(!tagged.fits(audience: .candidates))
+
+        let neutral = StarterTemplate(id: "y", name: "y", category: "Grow", systemImage: "y",
+                                      blurb: "y", subject: "s", body: "b")
+        for industry in TemplateIndustry.allCases { #expect(neutral.fits(industry: industry)) }
+        for audience in TemplateAudience.allCases { #expect(neutral.fits(audience: audience)) }
+    }
 }

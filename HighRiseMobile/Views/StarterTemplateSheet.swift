@@ -11,9 +11,14 @@ struct StarterTemplateSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
+    @State private var selectedIndustry: TemplateIndustry?
+    @State private var selectedAudience: TemplateAudience?
 
+    /// Groups after the industry/audience dropdowns and search text. Same
+    /// semantics as the Mac gallery: industry-tailored starters lead their
+    /// category, neutral ones fit every industry/audience.
     private var groups: [(category: String, templates: [StarterTemplate])] {
-        StarterTemplateCatalog.byCategory
+        StarterTemplateCatalog.byCategory(industry: selectedIndustry, audience: selectedAudience)
             .map { ($0.category, $0.templates.filter(matches)) }
             .filter { !$0.templates.isEmpty }
     }
@@ -28,6 +33,22 @@ struct StarterTemplateSheet: View {
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    Picker("Industry", selection: $selectedIndustry) {
+                        Text("All industries").tag(TemplateIndustry?.none)
+                        ForEach(TemplateIndustry.allCases) { industry in
+                            Text(industry.rawValue).tag(TemplateIndustry?.some(industry))
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    Picker("Audience", selection: $selectedAudience) {
+                        Text("All audiences").tag(TemplateAudience?.none)
+                        ForEach(TemplateAudience.allCases) { audience in
+                            Text(audience.rawValue).tag(TemplateAudience?.some(audience))
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
                 ForEach(groups, id: \.category) { group in
                     Section(group.category) {
                         ForEach(group.templates) { template in
@@ -42,7 +63,9 @@ struct StarterTemplateSheet: View {
                     }
                 }
                 if groups.isEmpty {
-                    Text("No templates match “\(searchText)”.")
+                    Text(searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                         ? "No templates match those filters."
+                         : "No templates match “\(searchText)”.")
                         .foregroundStyle(.secondary)
                 }
             }
