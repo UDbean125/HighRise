@@ -6,6 +6,18 @@ import Foundation
 /// import — just enough to get a CSV list merged and queued for sending.
 @MainActor
 final class MobileCoordinator: ObservableObject {
+
+    /// Quit-safe persistence. iOS kills backgrounded apps without warning,
+    /// so the imported list and the working template are written to disk and
+    /// restored on the next launch — see `MobileSessionStore`.
+    private let sessionStore: MobileSessionStore
+
+    /// Injectable so tests never read or write the real container.
+    init(sessionStore: MobileSessionStore = MobileSessionStore()) {
+        self.sessionStore = sessionStore
+        restoreSession()
+    }
+
     @Published var contacts: [Contact] = []
     /// Column headers from the current import — the Compose screen offers
     /// these as tap-to-insert merge fields, since they always resolve.
@@ -29,6 +41,10 @@ final class MobileCoordinator: ObservableObject {
 
     /// Fill proposals the user accepted, replayed in order on each re-derive.
     private var appliedFills: [ContactDataFiller.Proposal] = []
+
+    /// Suppresses session writes while `restoreSession` populates state, so
+    /// a half-restored session can never overwrite the good one on disk.
+    private var isRestoring = false
 
     @Published var template = EmailTemplate()
     @Published var previews: [MergePreview] = []
@@ -82,6 +98,7 @@ final class MobileCoordinator: ObservableObject {
             // previous run's completion state with it.
             queue = nil
             lastRunOutcomes = []
+            saveSession()
         } catch {
             importError = error.localizedDescription
         }
@@ -92,6 +109,7 @@ final class MobileCoordinator: ObservableObject {
     func applyFillProposal(_ proposal: ContactDataFiller.Proposal) {
         appliedFills.append(proposal)
         rerunPipeline()
+        saveSession()
     }
 
     /// Applies every currently offered fill at once, most confident first.
@@ -99,6 +117,7 @@ final class MobileCoordinator: ObservableObject {
         guard !fillProposals.isEmpty else { return }
         appliedFills.append(contentsOf: fillProposals)
         rerunPipeline()
+        saveSession()
     }
 
     /// Re-derives everything from the retained raw table: cleanup, any
@@ -186,6 +205,58 @@ final class MobileCoordinator: ObservableObject {
 
     func refreshPreviews() {
         previews = TemplateMergeEngine.mergeAll(template: template, contacts: contacts)
+    }
+
+    // MARK: - Session persistence
+
+    /// Writes the current session to disk. Called when the app leaves the
+    /// foreground (see `ContentView`'s scenePhase handler) and after the
+    /// edits that are expensive to lose.
+    func saveSession() {
+        guard !isRestoring else { return }
+        sessionStore.save(MobileSessionSnapshot(rawTable: rawTable,
+                                                sourceLabel: sourceLabel,
+                                                appliedFills: appliedFills,
+                                                template: template))
+    }
+
+    /// Rebuilds the previous session at launch: the template immediately,
+    /// then the recipient list by replaying the raw table and accepted fills
+    /// through the shared `ImportPipeline` — identical input, identical
+    /// contacts, no stale derived state.
+    private func restoreSession() {
+        guard let snapshot = sessionStore.load(), !snapshot.isEmpty else { return }
+        isRestoring = true
+        defer { isRestoring = false }
+        template = snapshot.template
+        guard let table = snapshot.rawTable else {
+            refreshPreviews()
+            return
+        }
+        rawTable = table
+        sourceLabel = snapshot.sourceLabel
+        appliedFills = snapshot.appliedFills
+        rerunPipeline()
+    }
+
+    /// Clears the imported list and the saved session — the "start over"
+    /// escape hatch, so a restored list is never a trap.
+    func clearSession() {
+        rawTable = nil
+        currentTable = nil
+        sourceLabel = ""
+        appliedFills = []
+        contacts = []
+        importedHeaders = []
+        importSummary = nil
+        importError = nil
+        fillProposals = []
+        enrichmentFills = []
+        enrichmentSummary = nil
+        queue = nil
+        lastRunOutcomes = []
+        previews = []
+        sessionStore.clear()
     }
 
     /// Builds a fresh send queue from whatever's currently sendable. Called

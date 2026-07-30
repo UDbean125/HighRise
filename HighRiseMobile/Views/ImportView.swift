@@ -21,6 +21,13 @@ struct ImportView: View {
                     if let summary = coordinator.importSummary {
                         Section("Import") {
                             Text(summary).font(.footnote).foregroundStyle(.secondary)
+                            // A list restored from a previous session should be
+                            // easy to walk away from, so it's never a trap.
+                            Button(role: .destructive) {
+                                coordinator.clearSession()
+                            } label: {
+                                Label("Start over with a new list", systemImage: "trash")
+                            }
                         }
                     }
                     if !coordinator.fillProposals.isEmpty {
