@@ -72,7 +72,7 @@ function Write-List {
         # Windows PowerShell 5.1's ConvertTo-Json unwraps a one-element array
         # into a bare object. Left alone, saving the first entry writes {...}
         # instead of [{...}] and the next save reads nothing back, silently
-        # dropping it — so re-wrap it by hand.
+        # dropping it - so re-wrap it by hand.
         if ($items.Count -eq 1 -and -not $json.TrimStart().StartsWith('[')) {
             $json = '[' + $json + ']'
         }
