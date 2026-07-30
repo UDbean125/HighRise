@@ -1,5 +1,32 @@
 import Foundation
 
+/// The line of business a starter was written for. Most starters are
+/// deliberately industry-neutral (an empty set — they read well anywhere);
+/// tagging is for the ones written in an industry's own vocabulary, which
+/// the gallery floats to the top when that industry is chosen. The industry
+/// filter therefore narrows *and* re-ranks, but never empties the gallery.
+enum TemplateIndustry: String, CaseIterable, Identifiable {
+    case professionalServices = "Professional Services"
+    case construction = "Construction & Real Estate"
+    case technology = "Technology & Software"
+    case retail = "Retail & E-commerce"
+    case health = "Health & Wellness"
+    case education = "Education & Nonprofit"
+
+    var id: String { rawValue }
+}
+
+/// Who a starter is addressed to. An empty set on a template means it suits
+/// any reader (a holiday-hours note, a reschedule).
+enum TemplateAudience: String, CaseIterable, Identifiable {
+    case prospects = "Prospects & Leads"
+    case customers = "Customers & Clients"
+    case partners = "Partners & Vendors"
+    case candidates = "Job Candidates"
+
+    var id: String { rawValue }
+}
+
 /// A ready-made template a user can start from with one click. Each one is
 /// written to *show off* the merge syntax — fields, `|fallback`s, and
 /// `|date:`/`|currency:` formatters — so the gallery doubles as a tutorial.
@@ -14,9 +41,28 @@ struct StarterTemplate: Identifiable, Hashable {
     let subject: String
     let body: String
     var format: EmailTemplate.BodyFormat = .plainText
+    /// Who this starter is addressed to; empty = suits any audience.
+    var audiences: Set<TemplateAudience> = []
+    /// Industries whose vocabulary this starter speaks; empty = neutral,
+    /// shown under every industry.
+    var industries: Set<TemplateIndustry> = []
 
     var emailTemplate: EmailTemplate {
         EmailTemplate(subject: subject, body: body, format: format)
+    }
+
+    /// Whether this starter belongs in the gallery when `industry` is the
+    /// active filter (nil = no filter). Neutral starters fit everywhere.
+    func fits(industry: TemplateIndustry?) -> Bool {
+        guard let industry else { return true }
+        return industries.isEmpty || industries.contains(industry)
+    }
+
+    /// Whether this starter belongs in the gallery when `audience` is the
+    /// active filter (nil = no filter). Untagged starters fit everyone.
+    func fits(audience: TemplateAudience?) -> Bool {
+        guard let audience else { return true }
+        return audiences.isEmpty || audiences.contains(audience)
     }
 }
 
@@ -46,7 +92,26 @@ enum StarterTemplateCatalog {
             .map { ($0, groups[$0] ?? []) }
     }
 
-    static let all: [StarterTemplate] = grow + connect + getPaid + retain + announce + recruit
+    /// `byCategory` narrowed by the gallery's industry/audience dropdowns.
+    /// Industry-tailored starters lead their category when an industry is
+    /// chosen; neutral starters stay (they fit everywhere), so a filter
+    /// combination never empties the whole gallery. Empty groups are dropped.
+    static func byCategory(industry: TemplateIndustry?,
+                           audience: TemplateAudience?) -> [(category: String, templates: [StarterTemplate])] {
+        byCategory.compactMap { group in
+            var matching = group.templates.filter {
+                $0.fits(industry: industry) && $0.fits(audience: audience)
+            }
+            guard !matching.isEmpty else { return nil }
+            if let industry {
+                matching = matching.filter { $0.industries.contains(industry) }
+                    + matching.filter { !$0.industries.contains(industry) }
+            }
+            return (group.category, matching)
+        }
+    }
+
+    static let all: [StarterTemplate] = grow + connect + getPaid + retain + announce + recruit + industryTailored
 
     // MARK: - Grow
 
@@ -69,7 +134,8 @@ enum StarterTemplateCatalog {
 
             Best,
             {{Sales Rep|Your name}}
-            """
+            """,
+            audiences: [.prospects]
         ),
         StarterTemplate(
             id: "follow-up",
@@ -87,7 +153,8 @@ enum StarterTemplateCatalog {
 
             Thanks!
             {{Sales Rep|Your name}}
-            """
+            """,
+            audiences: [.prospects]
         ),
         StarterTemplate(
             id: "break-up",
@@ -105,7 +172,8 @@ enum StarterTemplateCatalog {
 
             Thanks for your time either way,
             {{Sales Rep|Your name}}
-            """
+            """,
+            audiences: [.prospects]
         ),
         StarterTemplate(
             id: "referral-request",
@@ -125,7 +193,8 @@ enum StarterTemplateCatalog {
 
             Thank you,
             {{Account Manager|Your name}}
-            """
+            """,
+            audiences: [.customers]
         ),
         StarterTemplate(
             id: "case-study",
@@ -145,7 +214,8 @@ enum StarterTemplateCatalog {
 
             Best,
             {{Sales Rep|Your name}}
-            """
+            """,
+            audiences: [.prospects]
         ),
         StarterTemplate(
             id: "warm-intro",
@@ -166,7 +236,8 @@ enum StarterTemplateCatalog {
             Best,
             {{Sales Rep|Your name}}
             {{Phone|}}
-            """
+            """,
+            audiences: [.prospects]
         ),
         StarterTemplate(
             id: "trial-invite",
@@ -186,7 +257,8 @@ enum StarterTemplateCatalog {
 
             Best,
             {{Sales Rep|Your name}}
-            """
+            """,
+            audiences: [.prospects]
         ),
         StarterTemplate(
             id: "quote-send",
@@ -210,7 +282,8 @@ enum StarterTemplateCatalog {
 
             Best,
             {{Sales Rep|Your name}}
-            """
+            """,
+            audiences: [.prospects, .customers]
         ),
         StarterTemplate(
             id: "quote-follow-up",
@@ -230,7 +303,8 @@ enum StarterTemplateCatalog {
 
             Best,
             {{Sales Rep|Your name}}
-            """
+            """,
+            audiences: [.prospects, .customers]
         )
     ]
 
@@ -253,7 +327,8 @@ enum StarterTemplateCatalog {
 
             Looking forward to it,
             {{Account Manager|Your name}}
-            """
+            """,
+            audiences: [.prospects]
         ),
         StarterTemplate(
             id: "event-invite",
@@ -273,7 +348,8 @@ enum StarterTemplateCatalog {
 
             Hope to see you there,
             {{Sales Rep|The team}}
-            """
+            """,
+            audiences: [.prospects, .customers]
         ),
         StarterTemplate(
             id: "webinar-invite",
@@ -293,7 +369,8 @@ enum StarterTemplateCatalog {
 
             Best,
             {{Sales Rep|Your name}}
-            """
+            """,
+            audiences: [.prospects, .customers]
         ),
         StarterTemplate(
             id: "conference-meetup",
@@ -313,7 +390,8 @@ enum StarterTemplateCatalog {
 
             Best,
             {{Sales Rep|Your name}}
-            """
+            """,
+            audiences: [.prospects, .partners]
         ),
         StarterTemplate(
             id: "thanks-after-meeting",
@@ -402,7 +480,8 @@ enum StarterTemplateCatalog {
 
             Appreciate your business,
             {{Account Manager|Accounts team}}
-            """
+            """,
+            audiences: [.customers]
         ),
         StarterTemplate(
             id: "invoice-overdue",
@@ -422,7 +501,8 @@ enum StarterTemplateCatalog {
 
             Kind regards,
             {{Account Manager|Accounts team}}
-            """
+            """,
+            audiences: [.customers]
         ),
         StarterTemplate(
             id: "payment-thanks",
@@ -440,7 +520,8 @@ enum StarterTemplateCatalog {
 
             Best,
             {{Account Manager|Accounts team}}
-            """
+            """,
+            audiences: [.customers]
         ),
         StarterTemplate(
             id: "po-confirmation",
@@ -463,7 +544,8 @@ enum StarterTemplateCatalog {
 
             Best,
             {{Account Manager|Your name}}
-            """
+            """,
+            audiences: [.customers]
         ),
         StarterTemplate(
             id: "deposit-request",
@@ -483,7 +565,8 @@ enum StarterTemplateCatalog {
 
             Best,
             {{Account Manager|Your name}}
-            """
+            """,
+            audiences: [.customers]
         )
     ]
 
@@ -506,7 +589,8 @@ enum StarterTemplateCatalog {
 
             Thanks for being with us,
             {{Account Manager|Your name}}
-            """
+            """,
+            audiences: [.customers]
         ),
         StarterTemplate(
             id: "welcome-onboarding",
@@ -526,7 +610,8 @@ enum StarterTemplateCatalog {
 
             Welcome,
             {{Account Manager|Your name}}
-            """
+            """,
+            audiences: [.customers]
         ),
         StarterTemplate(
             id: "check-in",
@@ -544,7 +629,8 @@ enum StarterTemplateCatalog {
 
             Always good to hear from you,
             {{Account Manager|Your name}}
-            """
+            """,
+            audiences: [.customers]
         ),
         StarterTemplate(
             id: "feedback-request",
@@ -562,7 +648,8 @@ enum StarterTemplateCatalog {
 
             Thanks in advance,
             {{Account Manager|Your name}}
-            """
+            """,
+            audiences: [.customers]
         ),
         StarterTemplate(
             id: "win-back",
@@ -582,7 +669,8 @@ enum StarterTemplateCatalog {
 
             Best,
             {{Account Manager|Your name}}
-            """
+            """,
+            audiences: [.customers]
         ),
         StarterTemplate(
             id: "service-reminder",
@@ -602,7 +690,8 @@ enum StarterTemplateCatalog {
 
             Best,
             {{Account Manager|Your name}}
-            """
+            """,
+            audiences: [.customers]
         )
     ]
 
@@ -627,7 +716,8 @@ enum StarterTemplateCatalog {
 
             Best,
             {{Sales Rep|Your name}}
-            """
+            """,
+            audiences: [.prospects, .customers]
         ),
         StarterTemplate(
             id: "price-change",
@@ -647,7 +737,8 @@ enum StarterTemplateCatalog {
 
             Thank you for your continued business,
             {{Account Manager|Your name}}
-            """
+            """,
+            audiences: [.customers]
         ),
         StarterTemplate(
             id: "new-contact",
@@ -668,7 +759,8 @@ enum StarterTemplateCatalog {
             Best,
             {{Account Manager|Your name}}
             {{Phone|}}
-            """
+            """,
+            audiences: [.customers, .partners]
         ),
         StarterTemplate(
             id: "holiday-hours",
@@ -706,7 +798,8 @@ enum StarterTemplateCatalog {
 
             Best,
             {{Account Manager|Your name}}
-            """
+            """,
+            audiences: [.customers, .partners]
         )
     ]
 
@@ -731,7 +824,8 @@ enum StarterTemplateCatalog {
 
             Best,
             {{Account Manager|Your name}}
-            """
+            """,
+            audiences: [.candidates]
         ),
         StarterTemplate(
             id: "interview-invite",
@@ -751,7 +845,8 @@ enum StarterTemplateCatalog {
 
             Looking forward to it,
             {{Account Manager|Your name}}
-            """
+            """,
+            audiences: [.candidates]
         ),
         StarterTemplate(
             id: "candidate-update",
@@ -769,7 +864,145 @@ enum StarterTemplateCatalog {
 
             Thanks for your patience,
             {{Account Manager|Your name}}
-            """
+            """,
+            audiences: [.candidates]
+        )
+    ]
+
+    // MARK: - Industry-tailored
+    //
+    // One starter per `TemplateIndustry`, written in that industry's own
+    // vocabulary. These float to the top of their category when the gallery's
+    // industry dropdown is set; the neutral starters above remain visible for
+    // every industry. Grouping is by `category`, so these slot into the
+    // existing sections rather than forming their own.
+
+    private static let industryTailored: [StarterTemplate] = [
+        StarterTemplate(
+            id: "construction-project-update",
+            name: "Project milestone update",
+            category: "Retain",
+            systemImage: "building.2",
+            blurb: "Keep clients current on where their project stands.",
+            subject: "Progress update on {{Project Name|your project}}",
+            body: """
+            Hi {{First Name|there}},
+
+            A quick update from the field on {{Project Name|your project}} at {{Site Address|the site}}.
+
+            Where we are: {{Milestone|the current phase is on track}}. Next up is {{Next Step|the following phase}}, which we expect to begin around {{Meeting Date|the scheduled date|date:MMMM d}}.
+
+            No action needed from you — this is just so you're never guessing. If you'd like to walk the site together, reply and we'll set a time.
+
+            Best,
+            {{Account Manager|Your project manager}}
+            """,
+            audiences: [.customers],
+            industries: [.construction]
+        ),
+        StarterTemplate(
+            id: "services-document-checklist",
+            name: "Document checklist",
+            category: "Retain",
+            systemImage: "checklist",
+            blurb: "Request the documents you need to start an engagement.",
+            subject: "What we need to get started, {{First Name|there}}",
+            body: """
+            Hi {{First Name|there}},
+
+            To get {{Company|your}} engagement moving, here's what we still need from you: {{Documents Needed|last year's records, the signed engagement letter, and anything that changed since we last spoke}}.
+
+            Send whatever you have — partial is fine, and we'll chase the rest together. The sooner it's in, the sooner we can have everything wrapped by {{Due Date|the deadline|date:MMMM d}}.
+
+            Thank you,
+            {{Account Manager|Your name}}
+            """,
+            audiences: [.customers],
+            industries: [.professionalServices]
+        ),
+        StarterTemplate(
+            id: "tech-maintenance-notice",
+            name: "Maintenance window notice",
+            category: "Announce",
+            systemImage: "wrench.adjustable",
+            blurb: "Warn users about planned downtime before it happens.",
+            subject: "Planned maintenance on {{Due Date|the date below|date:EEEE, MMMM d}}",
+            body: """
+            Hi {{First Name|there}},
+
+            A heads-up before it happens rather than an apology after: we have planned maintenance on {{Due Date|the scheduled date|date:EEEE, MMMM d}}.
+
+            What it means for {{Company|your team}}: {{Product Name|the service}} may be briefly unavailable during the window. Nothing is lost, nothing changes in your account, and everything resumes automatically.
+
+            If that timing lands badly for something you have planned, reply and we'll work around you.
+
+            Thanks for your patience,
+            {{Account Manager|The team}}
+            """,
+            audiences: [.customers],
+            industries: [.technology]
+        ),
+        StarterTemplate(
+            id: "retail-back-in-stock",
+            name: "Back in stock",
+            category: "Announce",
+            systemImage: "shippingbox.and.arrow.backward",
+            blurb: "Tell customers the thing they wanted is available again.",
+            subject: "{{Product Name|It}}'s back in stock",
+            body: """
+            Hi {{First Name|there}},
+
+            Good news — {{Product Name|the item you asked about}} is back in stock as of today.
+
+            These went quickly last time, so I wanted you to hear before we announce it more widely. The price is {{Amount|unchanged|currency:USD}}, and I'm happy to set one aside for you — just reply and it's yours.
+
+            Thanks for your patience,
+            {{Sales Rep|The team}}
+            """,
+            audiences: [.customers],
+            industries: [.retail]
+        ),
+        StarterTemplate(
+            id: "health-appointment-recall",
+            name: "Appointment recall",
+            category: "Retain",
+            systemImage: "heart.text.square",
+            blurb: "Invite clients back in when they're due for a visit.",
+            subject: "Time for your next visit, {{First Name|there}}",
+            body: """
+            Hi {{First Name|there}},
+
+            Our records show you're due for your next {{Product Name|appointment}} — your last visit was around {{Due Date|a while ago|date:MMMM yyyy}}.
+
+            Staying on schedule keeps small things small, so we'd love to get you booked in. Reply with a couple of days that work for you, or call us on {{Phone|the usual number}} and we'll find a time.
+
+            Looking forward to seeing you,
+            {{Account Manager|The practice team}}
+            """,
+            audiences: [.customers],
+            industries: [.health]
+        ),
+        StarterTemplate(
+            id: "education-enrollment-open",
+            name: "Enrollment now open",
+            category: "Announce",
+            systemImage: "graduationcap",
+            blurb: "Announce that registration for a program has opened.",
+            subject: "Enrollment is open for {{Product Name|our next program}}",
+            body: """
+            Hi {{First Name|there}},
+
+            Enrollment just opened for {{Product Name|our next program}}, and given your interest I wanted you to hear it first.
+
+            Places are limited and registration closes on {{Due Date|the closing date|date:MMMM d}}. If you (or someone at {{Company|your organization}}) have been waiting for the right moment, this is it.
+
+            Reply with any questions — I'm happy to help you figure out whether it's the right fit before you commit.
+
+            Warm regards,
+            {{Account Manager|The program team}}
+            """,
+            audiences: [.prospects, .customers],
+            industries: [.education]
         )
     ]
 }

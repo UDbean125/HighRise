@@ -7,13 +7,17 @@ struct StarterTemplateGallery: View {
     let onSelect: (StarterTemplate) -> Void
 
     @State private var selectedCategory: String?
+    @State private var selectedIndustry: TemplateIndustry?
+    @State private var selectedAudience: TemplateAudience?
     @State private var searchText = ""
 
     private let columns = [GridItem(.adaptive(minimum: 230, maximum: 340), spacing: 12)]
 
-    /// Category groups after applying the category filter and search text.
+    /// Category groups after applying the category/industry/audience filters
+    /// and search text. Industry-tailored starters lead their category when an
+    /// industry is chosen (see `StarterTemplateCatalog.byCategory(industry:audience:)`).
     private var groups: [(category: String, templates: [StarterTemplate])] {
-        StarterTemplateCatalog.byCategory
+        StarterTemplateCatalog.byCategory(industry: selectedIndustry, audience: selectedAudience)
             .filter { selectedCategory == nil || $0.category == selectedCategory }
             .map { group in (group.category, group.templates.filter(matches)) }
             .filter { !$0.templates.isEmpty }
@@ -30,7 +34,9 @@ struct StarterTemplateGallery: View {
         VStack(alignment: .leading, spacing: 12) {
             filterBar
             if groups.isEmpty {
-                Text("No templates match “\(searchText)”.")
+                Text(searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                     ? "No templates match those filters."
+                     : "No templates match “\(searchText)”.")
                     .font(.callout).foregroundStyle(.secondary)
                     .padding(.vertical, 8)
             }
@@ -49,16 +55,41 @@ struct StarterTemplateGallery: View {
         }
     }
 
+    /// Two rows so the bar stays comfortable at the app's minimum window
+    /// width: the three dropdowns together, search beneath.
     private var filterBar: some View {
-        HStack(spacing: 8) {
-            Picker("Category", selection: $selectedCategory) {
-                Text("All \(StarterTemplateCatalog.all.count)").tag(String?.none)
-                ForEach(StarterTemplateCatalog.byCategory, id: \.category) { group in
-                    Text("\(group.category) (\(group.templates.count))").tag(String?.some(group.category))
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Picker("Category", selection: $selectedCategory) {
+                    Text("All \(StarterTemplateCatalog.all.count)").tag(String?.none)
+                    ForEach(StarterTemplateCatalog.byCategory, id: \.category) { group in
+                        Text("\(group.category) (\(group.templates.count))").tag(String?.some(group.category))
+                    }
                 }
+                .labelsHidden()
+                .frame(maxWidth: 180)
+
+                Picker("Industry", selection: $selectedIndustry) {
+                    Text("All industries").tag(TemplateIndustry?.none)
+                    ForEach(TemplateIndustry.allCases) { industry in
+                        Text(industry.rawValue).tag(TemplateIndustry?.some(industry))
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 220)
+                .help("Show templates written for your industry (plus the ones that fit any industry)")
+
+                Picker("Audience", selection: $selectedAudience) {
+                    Text("All audiences").tag(TemplateAudience?.none)
+                    ForEach(TemplateAudience.allCases) { audience in
+                        Text(audience.rawValue).tag(TemplateAudience?.some(audience))
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 200)
+                .help("Show templates written for who you're emailing")
+                Spacer()
             }
-            .labelsHidden()
-            .frame(maxWidth: 200)
 
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
@@ -75,8 +106,7 @@ struct StarterTemplateGallery: View {
             }
             .padding(.horizontal, 8).padding(.vertical, 5)
             .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 7))
-            .frame(maxWidth: 260)
-            Spacer()
+            .frame(maxWidth: 320)
         }
     }
 }
