@@ -79,21 +79,23 @@ $tplBox.Size = New-Object System.Drawing.Size(475, 24)
 $tplBox.ReadOnly = $true
 $tplBox.BackColor = [System.Drawing.Color]::White
 $form.Controls.Add($tplBox)
-$tplBtn = New-Button -Text 'Browse...' -X 500 -Y 100 -W 110
-$tplNewBtn = New-Button -Text 'New template...' -X 625 -Y 100 -W 120
+$tplPickBtn = New-Button -Text 'Starter templates...' -X 500 -Y 100 -W 140
+$tplBtn = New-Button -Text 'Browse...' -X 645 -Y 100 -W 100
+$tplNewBtn = New-Button -Text 'New template...' -X 15 -Y 133 -W 130 -H 26
+$tplNewBtn.Font = New-Object System.Drawing.Font('Segoe UI', 8)
 
 # BCC self -----------------------------------------------------------------
-[void](New-Label -Text 'Optional - BCC a copy of every message to yourself:' -X 15 -Y 141 -W 500)
+[void](New-Label -Text 'Optional - BCC a copy of every message to yourself:' -X 15 -Y 166 -W 500)
 $bccBox = New-Object System.Windows.Forms.TextBox
-$bccBox.Location = New-Object System.Drawing.Point(15, 164)
+$bccBox.Location = New-Object System.Drawing.Point(15, 189)
 $bccBox.Size = New-Object System.Drawing.Size(360, 24)
 $form.Controls.Add($bccBox)
 
 # Output -------------------------------------------------------------------
-[void](New-Label -Text 'Result:' -X 15 -Y 200 -W 200 -Bold $true)
+[void](New-Label -Text 'Result:' -X 15 -Y 225 -W 200 -Bold $true)
 $outBox = New-Object System.Windows.Forms.TextBox
-$outBox.Location = New-Object System.Drawing.Point(15, 223)
-$outBox.Size = New-Object System.Drawing.Size(730, 330)
+$outBox.Location = New-Object System.Drawing.Point(15, 248)
+$outBox.Size = New-Object System.Drawing.Size(730, 305)
 $outBox.Multiline = $true
 $outBox.ReadOnly = $true
 $outBox.ScrollBars = 'Vertical'
@@ -128,6 +130,218 @@ $tplBtn.Add_Click({
     $dlg.Filter = 'Template files (*.txt)|*.txt|All files (*.*)|*.*'
     $dlg.Title = 'Choose your message template'
     if ($dlg.ShowDialog() -eq 'OK') { $tplBox.Text = $dlg.FileName }
+})
+
+# Starter-template picker ---------------------------------------------------
+# The same catalog the Mac and iOS apps ship (Windows/templates.json, generated
+# from the Swift source by Tools/export-templates.py). Search plus the three
+# dropdowns - industry, audience, task - mirroring the Mac gallery's filters.
+function Show-TemplatePicker {
+    $catalogPath = Join-Path $scriptDir 'templates.json'
+    if (-not (Test-Path -LiteralPath $catalogPath)) {
+        Show-Warn "Can't find templates.json in this folder:`n$scriptDir`n`nKeep the whole Windows folder together."
+        return $null
+    }
+    $catalog = Get-Content -LiteralPath $catalogPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $all = @($catalog.templates)
+
+    $dlg = New-Object System.Windows.Forms.Form
+    $dlg.Text = 'Start from a template'
+    $dlg.Size = New-Object System.Drawing.Size(920, 640)
+    $dlg.StartPosition = 'CenterParent'
+    $dlg.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+    $dlg.MinimumSize = New-Object System.Drawing.Size(820, 560)
+
+    $searchLbl = New-Object System.Windows.Forms.Label
+    $searchLbl.Text = 'Search'
+    $searchLbl.Location = New-Object System.Drawing.Point(15, 18)
+    $searchLbl.Size = New-Object System.Drawing.Size(50, 20)
+    $dlg.Controls.Add($searchLbl)
+
+    $searchBox = New-Object System.Windows.Forms.TextBox
+    $searchBox.Location = New-Object System.Drawing.Point(65, 15)
+    $searchBox.Size = New-Object System.Drawing.Size(300, 24)
+    $dlg.Controls.Add($searchBox)
+
+    $countLbl = New-Object System.Windows.Forms.Label
+    $countLbl.Location = New-Object System.Drawing.Point(375, 18)
+    $countLbl.Size = New-Object System.Drawing.Size(150, 20)
+    $countLbl.ForeColor = [System.Drawing.Color]::DimGray
+    $dlg.Controls.Add($countLbl)
+
+    $clearBtn = New-Object System.Windows.Forms.Button
+    $clearBtn.Text = 'Clear filters'
+    $clearBtn.Location = New-Object System.Drawing.Point(770, 14)
+    $clearBtn.Size = New-Object System.Drawing.Size(110, 26)
+    $clearBtn.Anchor = 'Top,Right'
+    $dlg.Controls.Add($clearBtn)
+
+    function New-Filter {
+        param([string]$Label, [int]$X, [int]$W, [string[]]$Items, [string]$AllText)
+        $l = New-Object System.Windows.Forms.Label
+        $l.Text = $Label
+        $l.Location = New-Object System.Drawing.Point($X, 52)
+        $l.Size = New-Object System.Drawing.Size(70, 20)
+        $dlg.Controls.Add($l)
+        $c = New-Object System.Windows.Forms.ComboBox
+        $c.Location = New-Object System.Drawing.Point($X, 74)
+        $c.Size = New-Object System.Drawing.Size($W, 24)
+        $c.DropDownStyle = 'DropDownList'
+        [void]$c.Items.Add($AllText)
+        foreach ($i in $Items) { [void]$c.Items.Add($i) }
+        $c.SelectedIndex = 0
+        $dlg.Controls.Add($c)
+        return $c
+    }
+
+    $industryBox = New-Filter -Label 'Industry' -X 15  -W 270 -Items @($catalog.industries) -AllText 'All industries'
+    $audienceBox = New-Filter -Label 'Audience' -X 300 -W 220 -Items @($catalog.audiences)  -AllText 'All audiences'
+    $taskBox     = New-Filter -Label 'Task'     -X 535 -W 170 -Items @($catalog.categories) -AllText 'Any task'
+
+    $listBox = New-Object System.Windows.Forms.ListBox
+    $listBox.Location = New-Object System.Drawing.Point(15, 112)
+    $listBox.Size = New-Object System.Drawing.Size(420, 440)
+    $listBox.Anchor = 'Top,Bottom,Left'
+    $dlg.Controls.Add($listBox)
+
+    $previewBox = New-Object System.Windows.Forms.TextBox
+    $previewBox.Location = New-Object System.Drawing.Point(450, 112)
+    $previewBox.Size = New-Object System.Drawing.Size(430, 440)
+    $previewBox.Multiline = $true
+    $previewBox.ReadOnly = $true
+    $previewBox.ScrollBars = 'Vertical'
+    $previewBox.BackColor = [System.Drawing.Color]::White
+    $previewBox.Font = New-Object System.Drawing.Font('Consolas', 9)
+    $previewBox.Anchor = 'Top,Bottom,Left,Right'
+    $dlg.Controls.Add($previewBox)
+
+    $useBtn = New-Object System.Windows.Forms.Button
+    $useBtn.Text = 'Use this template'
+    $useBtn.Location = New-Object System.Drawing.Point(15, 565)
+    $useBtn.Size = New-Object System.Drawing.Size(170, 32)
+    $useBtn.Anchor = 'Bottom,Left'
+    $useBtn.Font = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Bold)
+    $dlg.Controls.Add($useBtn)
+
+    $cancelBtn = New-Object System.Windows.Forms.Button
+    $cancelBtn.Text = 'Cancel'
+    $cancelBtn.Location = New-Object System.Drawing.Point(770, 565)
+    $cancelBtn.Size = New-Object System.Drawing.Size(110, 32)
+    $cancelBtn.Anchor = 'Bottom,Right'
+    $dlg.Controls.Add($cancelBtn)
+
+    # Shown templates, parallel to $listBox items.
+    $script:shown = @()
+
+    function Test-Contains {
+        param([string[]]$Values, [string]$Needle)
+        foreach ($v in $Values) {
+            if ($v -and $v.ToLowerInvariant().Contains($Needle)) { return $true }
+        }
+        return $false
+    }
+
+    function Update-List {
+        $query = $searchBox.Text.Trim().ToLowerInvariant()
+        $ind = if ($industryBox.SelectedIndex -gt 0) { [string]$industryBox.SelectedItem } else { '' }
+        $aud = if ($audienceBox.SelectedIndex -gt 0) { [string]$audienceBox.SelectedItem } else { '' }
+        $task = if ($taskBox.SelectedIndex -gt 0) { [string]$taskBox.SelectedItem } else { '' }
+
+        $keep = @()
+        foreach ($t in $all) {
+            $tInd = @($t.industries)
+            $tAud = @($t.audiences)
+            # A neutral template fits every industry/audience, same as the apps.
+            if ($ind -and $tInd.Count -gt 0 -and ($tInd -notcontains $ind)) { continue }
+            if ($aud -and $tAud.Count -gt 0 -and ($tAud -notcontains $aud)) { continue }
+            if ($task -and $t.category -ne $task) { continue }
+            if ($query) {
+                $hay = @($t.name, $t.blurb, $t.category, $t.subject, $t.body) + $tInd + $tAud
+                $ok = $true
+                foreach ($word in ($query -split '\s+' | Where-Object { $_ })) {
+                    if (-not (Test-Contains -Values $hay -Needle $word)) { $ok = $false; break }
+                }
+                if (-not $ok) { continue }
+            }
+            $keep += $t
+        }
+        # Industry-specific ones first when an industry is chosen.
+        if ($ind) {
+            $keep = @($keep | Where-Object { @($_.industries).Count -gt 0 }) +
+                    @($keep | Where-Object { @($_.industries).Count -eq 0 })
+        }
+
+        $listBox.BeginUpdate()
+        $listBox.Items.Clear()
+        foreach ($t in $keep) {
+            $mark = if (@($t.industries).Count -gt 0) { '* ' } else { '  ' }
+            [void]$listBox.Items.Add(("{0}{1}  -  {2}" -f $mark, $t.name, $t.category))
+        }
+        $listBox.EndUpdate()
+        $script:shown = $keep
+        $countLbl.Text = ("{0} of {1} shown" -f $keep.Count, $all.Count)
+        if ($listBox.Items.Count -gt 0) { $listBox.SelectedIndex = 0 } else { $previewBox.Text = '' }
+    }
+
+    $listBox.Add_SelectedIndexChanged({
+        $i = $listBox.SelectedIndex
+        if ($i -lt 0 -or $i -ge $script:shown.Count) { return }
+        $t = $script:shown[$i]
+        $lines = @()
+        $lines += $t.name
+        $lines += $t.blurb
+        $lines += ''
+        if (@($t.industries).Count) { $lines += ('Industry: ' + (@($t.industries) -join ', ')) }
+        if (@($t.audiences).Count)  { $lines += ('Audience: ' + (@($t.audiences) -join ', ')) }
+        $lines += ('Task:     ' + $t.category)
+        $lines += ''
+        $lines += ('Subject: ' + $t.subject)
+        $lines += ''
+        $lines += $t.body
+        $previewBox.Text = ($lines -join [Environment]::NewLine)
+    })
+
+    $searchBox.Add_TextChanged({ Update-List })
+    $industryBox.Add_SelectedIndexChanged({ Update-List })
+    $audienceBox.Add_SelectedIndexChanged({ Update-List })
+    $taskBox.Add_SelectedIndexChanged({ Update-List })
+    $clearBtn.Add_Click({
+        $searchBox.Text = ''
+        $industryBox.SelectedIndex = 0
+        $audienceBox.SelectedIndex = 0
+        $taskBox.SelectedIndex = 0
+    })
+
+    $script:picked = $null
+    $useBtn.Add_Click({
+        $i = $listBox.SelectedIndex
+        if ($i -lt 0 -or $i -ge $script:shown.Count) {
+            [void][System.Windows.Forms.MessageBox]::Show('Pick a template from the list first.', 'HighRise', 'OK', 'Information')
+            return
+        }
+        $script:picked = $script:shown[$i]
+        $dlg.Close()
+    })
+    $cancelBtn.Add_Click({ $script:picked = $null; $dlg.Close() })
+    $listBox.Add_DoubleClick({ $useBtn.PerformClick() })
+
+    Update-List
+    [void]$dlg.ShowDialog()
+    return $script:picked
+}
+
+$tplPickBtn.Add_Click({
+    $chosen = Show-TemplatePicker
+    if (-not $chosen) { return }
+    $save = New-Object System.Windows.Forms.SaveFileDialog
+    $save.Filter = 'Template files (*.txt)|*.txt'
+    $save.Title = 'Save this template'
+    $save.FileName = ($chosen.id + '.txt')
+    if ($save.ShowDialog() -ne 'OK') { return }
+    $text = 'Subject: ' + $chosen.subject + [Environment]::NewLine + [Environment]::NewLine + $chosen.body + [Environment]::NewLine
+    Set-Content -LiteralPath $save.FileName -Value $text -Encoding UTF8
+    $tplBox.Text = $save.FileName
+    Show-Info ("Loaded '" + $chosen.name + "'. Edit it any time in Notepad, or click Preview to see it merged against your list.")
 })
 
 $tplNewBtn.Add_Click({
@@ -166,7 +380,7 @@ $closeBtn.Add_Click({ $form.Close() })
 function Set-Busy {
     param([bool]$Busy)
     $form.Cursor = if ($Busy) { 'WaitCursor' } else { 'Default' }
-    foreach ($b in @($previewBtn, $draftBtn, $sendBtn, $csvBtn, $tplBtn, $tplNewBtn)) { $b.Enabled = -not $Busy }
+    foreach ($b in @($previewBtn, $draftBtn, $sendBtn, $csvBtn, $tplBtn, $tplNewBtn, $tplPickBtn)) { $b.Enabled = -not $Busy }
 }
 
 function Invoke-Merge {

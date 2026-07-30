@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import AppKit
 @testable import HighRise
 
 /// The starter gallery is a new user's first impression *and* their tutorial in
@@ -24,6 +25,37 @@ struct StarterTemplateCatalogTests {
             #expect(!starter.subject.isEmpty, "\(starter.id) has an empty subject")
             #expect(!starter.body.isEmpty, "\(starter.id) has an empty body")
         }
+    }
+
+    @Test("Every card icon is a real SF Symbol")
+    func iconsResolve() {
+        // A typo'd or too-new symbol name renders as a blank square rather
+        // than failing loudly, so the gallery would quietly look broken.
+        for starter in all {
+            #expect(NSImage(systemSymbolName: starter.systemImage, accessibilityDescription: nil) != nil,
+                    "\(starter.id) uses “\(starter.systemImage)”, which doesn't resolve on this OS")
+        }
+        for industry in TemplateIndustry.allCases {
+            #expect(NSImage(systemSymbolName: industry.systemImage, accessibilityDescription: nil) != nil,
+                    "\(industry.rawValue) uses “\(industry.systemImage)”, which doesn't resolve on this OS")
+        }
+    }
+
+    @Test("Search matches name, blurb, industry, and audience wording")
+    func searchFindsTemplates() {
+        let driver = all.first { $0.id == "transport-driver-seat-open" }
+        #expect(driver != nil)
+        if let driver {
+            #expect(StarterTemplateCatalog.matches(driver, query: "driver"))
+            // Industry and audience labels are searchable even when the word
+            // appears nowhere in the copy.
+            #expect(StarterTemplateCatalog.matches(driver, query: "Transportation"))
+            #expect(StarterTemplateCatalog.matches(driver, query: "candidates"))
+            // Every word must hit — this is a narrowing search, not an OR.
+            #expect(!StarterTemplateCatalog.matches(driver, query: "driver dentist"))
+        }
+        // An empty query matches everything.
+        #expect(all.allSatisfy { StarterTemplateCatalog.matches($0, query: "   ") })
     }
 
     @Test("emailTemplate round-trips the starter's content")
@@ -95,11 +127,124 @@ struct StarterTemplateCatalogTests {
 
     // MARK: - Industry / audience filters
 
-    @Test("Every industry has at least one tailored starter")
-    func everyIndustryHasATailoredStarter() {
+    @Test("Every industry has a useful number of tailored starters")
+    func everyIndustryHasTailoredStarters() {
+        // Each of the twelve North American sectors needs enough depth that
+        // picking it in the dropdown is worth doing — one lonely card isn't.
         for industry in TemplateIndustry.allCases {
-            #expect(all.contains { $0.industries.contains(industry) },
-                    "No starter is written for “\(industry.rawValue)”")
+            let count = StarterTemplateCatalog.tailoredCount(for: industry)
+            #expect(count >= 3, "Only \(count) starter(s) written for “\(industry.rawValue)”")
+        }
+    }
+
+    @Test("Every industry × audience pair has a purpose-written starter")
+    func industryAudienceMatrixIsCovered() {
+        // The gallery lets someone choose their sector *and* who they're
+        // emailing, so every one of the 48 cells needs a starter written in
+        // that industry's vocabulary and shaped for that reader — not a
+        // neutral one standing in.
+        for industry in TemplateIndustry.allCases {
+            for audience in TemplateAudience.allCases {
+                let written = all.filter {
+                    $0.industries.contains(industry) && $0.audiences.contains(audience)
+                }
+                #expect(!written.isEmpty,
+                        "Nothing written for “\(industry.rawValue)” addressed to “\(audience.rawValue)”")
+            }
+        }
+    }
+
+    @Test("Choosing an industry and an audience still leads with tailored work")
+    func tailoredBandSurvivesAudienceFilter() {
+        // Because the matrix is fully covered, narrowing to a sector *and* an
+        // audience must still produce a "Made for …" band — never drop the
+        // user into nothing but generic templates.
+        for industry in TemplateIndustry.allCases {
+            for audience in TemplateAudience.allCases {
+                let sections = StarterTemplateCatalog.sections(industry: industry, audience: audience)
+                #expect(sections.first?.industry == industry,
+                        "\(industry.rawValue) + \(audience.rawValue) lost its tailored band")
+            }
+        }
+    }
+
+    @Test("Industry-tailored starters spread across more than one task group")
+    func tailoredStartersSpanCategories() {
+        for industry in TemplateIndustry.allCases {
+            let categories = Set(all.filter { $0.industries.contains(industry) }.map(\.category))
+            #expect(categories.count >= 2,
+                    "All “\(industry.rawValue)” starters land in one task group (\(categories))")
+        }
+    }
+
+    // MARK: - Sectioned gallery
+
+    @Test("With no industry chosen the gallery is one band holding everything")
+    func sectionsWithoutIndustry() {
+        let sections = StarterTemplateCatalog.sections(industry: nil, audience: nil)
+        #expect(sections.count == 1)
+        #expect(sections[0].industry == nil)
+        #expect(sections[0].count == all.count)
+        #expect(sections[0].groups.map(\.category) == StarterTemplateCatalog.byCategory.map(\.category))
+    }
+
+    @Test("Choosing an industry splits the gallery into tailored and neutral bands")
+    func sectionsWithIndustry() {
+        for industry in TemplateIndustry.allCases {
+            let sections = StarterTemplateCatalog.sections(industry: industry, audience: nil)
+            #expect(sections.count == 2, "\(industry.rawValue) didn't produce both bands")
+
+            let tailored = sections[0]
+            #expect(tailored.industry == industry, "The tailored band must come first")
+            #expect(tailored.title == "Made for \(industry.rawValue)")
+            #expect(tailored.groups.allSatisfy { $0.templates.allSatisfy { $0.industries.contains(industry) } },
+                    "A neutral starter leaked into the tailored band")
+            #expect(tailored.count == StarterTemplateCatalog.tailoredCount(for: industry))
+
+            let neutral = sections[1]
+            #expect(neutral.industry == nil)
+            #expect(neutral.groups.allSatisfy { $0.templates.allSatisfy(\.industries.isEmpty) },
+                    "A tailored starter leaked into the any-industry band")
+
+            // Another industry's starters appear in neither band.
+            let shown = Set(sections.flatMap { $0.groups.flatMap(\.templates) }.map(\.id))
+            let otherIndustryOnly = all.filter { !$0.industries.isEmpty && !$0.industries.contains(industry) }
+            #expect(otherIndustryOnly.allSatisfy { !shown.contains($0.id) },
+                    "\(industry.rawValue) is showing another sector's starters")
+        }
+    }
+
+    @Test("Sections keep the task groups as their subsections, in catalog order")
+    func sectionsPreserveCategoryOrder() {
+        let order = StarterTemplateCatalog.byCategory.map(\.category)
+        for industry in TemplateIndustry.allCases {
+            for section in StarterTemplateCatalog.sections(industry: industry, audience: nil) {
+                let categories = section.groups.map(\.category)
+                #expect(categories == order.filter(categories.contains),
+                        "“\(section.title)” lists task groups out of order")
+                #expect(section.groups.allSatisfy { !$0.templates.isEmpty },
+                        "“\(section.title)” has an empty task group")
+            }
+        }
+    }
+
+    @Test("No industry/audience combination empties the sectioned gallery")
+    func sectionsNeverDeadEnd() {
+        for industry in TemplateIndustry.allCases {
+            for audience in TemplateAudience.allCases {
+                let sections = StarterTemplateCatalog.sections(industry: industry, audience: audience)
+                #expect(!sections.flatMap { $0.groups.flatMap(\.templates) }.isEmpty,
+                        "\(industry.rawValue) + \(audience.rawValue) shows nothing")
+            }
+        }
+    }
+
+    @Test("Sections never duplicate a template")
+    func sectionsAreDisjoint() {
+        for industry in TemplateIndustry.allCases {
+            let ids = StarterTemplateCatalog.sections(industry: industry, audience: nil)
+                .flatMap { $0.groups.flatMap(\.templates) }.map(\.id)
+            #expect(Set(ids).count == ids.count, "\(industry.rawValue) shows a template twice")
         }
     }
 
@@ -154,7 +299,7 @@ struct StarterTemplateCatalogTests {
                                      audiences: [.prospects], industries: [.retail])
         #expect(tagged.fits(industry: nil) && tagged.fits(audience: nil))
         #expect(tagged.fits(industry: .retail) && tagged.fits(audience: .prospects))
-        #expect(!tagged.fits(industry: .health))
+        #expect(!tagged.fits(industry: .healthcare))
         #expect(!tagged.fits(audience: .candidates))
 
         let neutral = StarterTemplate(id: "y", name: "y", category: "Grow", systemImage: "y",

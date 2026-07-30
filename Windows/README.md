@@ -19,12 +19,15 @@ If you don't want to touch PowerShell at all, use the point-and-click window.
 It does everything the command line does, with Browse buttons and three big
 buttons — **Preview**, **Create Drafts**, **Send** — instead of typed commands.
 
-1. Make sure these three files are together in one folder: **`HighRise.cmd`**,
-   **`HighRise-GUI.ps1`**, and **`HighRise-Merge.ps1`**.
+1. Make sure these files are together in one folder: **`HighRise.cmd`**,
+   **`HighRise-GUI.ps1`**, **`HighRise-Merge.ps1`**, **`HighRise-Templates.ps1`**,
+   and **`templates.json`**.
 2. **Double-click `HighRise.cmd`.** The HighRise window opens.
-3. In the window: **Browse** to your recipients list, then **Browse** to your
-   template (or click **New template…** to create one — it opens in Notepad
-   with instructions). Optionally type your own address in the BCC box.
+3. In the window: **Browse** to your recipients list, then click **Starter
+   templates…** to pick one of the 95 ready-made templates the Mac and iPhone
+   apps ship (see below), **Browse** to a template file you already have, or
+   **New template…** to write one from scratch in Notepad. Optionally type your
+   own address in the BCC box.
 4. Click **Preview** to see every message safely (nothing is created), then
    **Create Drafts** to drop one draft per recipient into Outlook. Click
    **Open Outlook** to review and send them.
@@ -33,6 +36,41 @@ Want it even faster? Right-click `HighRise.cmd` → **Send to ▸ Desktop (creat
 shortcut)**, then rename the desktop shortcut to "HighRise" — now it's a
 double-click icon on your desktop. (You can also right-click that shortcut →
 **Pin to taskbar**.)
+
+## Starter templates
+
+The same 95 ready-made templates the Mac and iPhone apps ship come with the
+Windows folder, in `templates.json`. Every one is a working example of the
+merge syntax, so they double as a tutorial.
+
+**In the window:** click **Starter templates…** for a browser with a search
+box and three dropdowns — **Industry** (the twelve major North American
+sectors), **Audience** (prospects, customers, partners, job candidates), and
+**Task** (Grow, Connect, Get paid, Retain, Announce, Recruit). Pick an
+industry and the ones written for that trade come first; the general-purpose
+ones stay underneath, so you're never left with an empty list. Click a
+template to read it in full, then **Use this template** to save it and load it
+into the merge.
+
+**From the command line**, `HighRise-Templates.ps1` does the same thing:
+
+```powershell
+.\HighRise-Templates.ps1                                     # list all 95
+.\HighRise-Templates.ps1 -Industry Construction              # one sector
+.\HighRise-Templates.ps1 -Industry Transport -Audience cand  # sector + reader
+.\HighRise-Templates.ps1 -Search "invoice overdue"           # free-text search
+.\HighRise-Templates.ps1 -Id invoice-reminder -Full          # read one in full
+.\HighRise-Templates.ps1 -Id invoice-reminder -Save .\mine.txt
+```
+
+That last one writes a normal template file you then pass to the merge:
+
+```powershell
+.\HighRise-Merge.ps1 -Csv .\my-list.csv -Template .\mine.txt -DryRun
+```
+
+`-Industry`, `-Audience` and `-Category` match on any part of the name, so
+`-Industry const` finds Construction and `-Audience cand` finds Job Candidates.
 
 The rest of this page is the command-line reference — you only need it if you
 want the extra options (per-recipient attachments, CC, throttling, reports).
@@ -141,11 +179,11 @@ One Windows-flavored difference: `date:` patterns are .NET format strings
 
 ## What the Windows tool doesn't do
 
-The Mac app is the full product; this is the merge-and-send core. Not here:
-the GUI, `.xlsx`/`.docx`/PDF import (export to CSV instead), Apple/Outlook
-contacts import, the do-not-contact list, A/B template variants, scheduled
-send, merge-to-PDF, and the unsubscribe footer. If you need one of these on
-Windows, open an issue.
+The Mac app is the full product; this is the merge-and-send core plus the
+starter-template catalog. Not here: `.xlsx`/`.docx`/PDF import (export to CSV
+instead), Apple/Outlook contacts import, the do-not-contact list, A/B template
+variants, scheduled send, merge-to-PDF, and the unsubscribe footer. If you need
+one of these on Windows, open an issue.
 
 ## Troubleshooting
 
