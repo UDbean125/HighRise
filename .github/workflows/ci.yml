@@ -276,8 +276,9 @@ jobs:
           # An unfinished journal from a different list must not silently drop
           # recipients out of this one.
           New-InterruptedJournal -Path $log -ForCsv 'C:\somewhere\other-list.csv' -ForTemplate $tplFull
-          $other = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $tpl -RunLog $log -DryRun *>&1 | Out-String
-          if ($other -notlike '*different list or template*') { throw 'A foreign unfinished journal was not reported' }
+          $onDisk = Get-Content -LiteralPath $log -Raw
+          $other = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $tpl -RunLog $log -DryRun *>&1 | Out-String -Width 500
+          if ($other -notlike '*different list or template*') { throw "A foreign unfinished journal was not reported.`nJournal on disk was:`n$onDisk`nRun said:`n$other" }
           if ($other.Contains('[SKIPPED]')) { throw 'A foreign unfinished journal wrongly skipped recipients' }
 
           # A corrupt journal must stop the run, never quietly re-email everyone.
