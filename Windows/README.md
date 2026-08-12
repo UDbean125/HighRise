@@ -67,6 +67,36 @@ one copied off a Mac — pass `-DoNotContact <path>` to either script.
 If the list file is corrupt, the merge **stops** rather than continuing: a
 list it can't read must never silently become "email everyone."
 
+## If a run is interrupted
+
+A long send can be cut short — the machine sleeps, Outlook falls over, someone
+closes the window. HighRise writes a **run journal** as it goes, one line per
+recipient, so the record of who was already reached survives whatever killed
+the run. It lives at `%APPDATA%\HighRise\last-run.json`.
+
+Start the same list and template again and HighRise notices the previous
+attempt never finished, tells you so, and **skips the people it already
+reached** — so nobody gets the same email twice:
+
+```
+The previous run of this list started 08/12/2026 09:14:22 and did not finish.
+Skipping the 312 recipient(s) it already reached.
+[SKIPPED] Sam Rivera <sam@acme.com> - already sent by the unfinished previous run
+```
+
+```powershell
+.\HighRise-Merge.ps1 -ShowLastRun         # who was already reached?
+.\HighRise-Merge.ps1 ... -IgnorePreviousRun   # contact them again anyway
+.\HighRise-Merge.ps1 ... -NoRunLog            # keep no journal at all
+.\HighRise-Merge.ps1 ... -RunLog D:\logs\run.json   # keep it somewhere else
+```
+
+Skipping only ever happens for an **unfinished** run of the *same* list and
+template. A run that ended normally never causes skips, so re-sending to a
+list you've already mailed still works exactly as before. If the journal file
+is corrupt, the merge **stops** rather than guessing — the same rule the
+do-not-contact list follows, and for the same reason.
+
 ## Starter templates
 
 The same 95 ready-made templates the Mac and iPhone apps ship come with the
@@ -205,7 +235,7 @@ One Windows-flavored difference: `date:` patterns are .NET format strings
   (the run stops if one is missing, and warns when the total is > 20 MB).
 - A CSV column named `attachment` (or `attachments` / `file` / `files`) holds
   per-recipient paths, `;`-separated. A missing file blocks that row only.
-- `-ReportCsv run-report.csv` writes a per-recipient outcome log.
+- `-ReportCsv run-report.csv` writes a per-recipient outcome log at the end. The run journal above is the one that survives a crash.
 
 ## What the Windows tool doesn't do
 
