@@ -88,6 +88,24 @@ Pause this many seconds between messages when sending (default 0).
 Also write a per-recipient outcome report (name, email, status, detail) to
 this CSV path.
 
+.PARAMETER RunLog
+Where to keep the durable run journal. Defaults to
+%APPDATA%\HighRise\last-run.json. The journal is written record-by-record as
+the run progresses, so a crash, a closed window or Ctrl-C partway through a
+long run still leaves a record of who was already reached.
+
+.PARAMETER NoRunLog
+Do not read or write the run journal at all.
+
+.PARAMETER IgnorePreviousRun
+Deliver to everyone, including the recipients an unfinished previous run of
+this same list and template already reached. Deliberately awkward to reach:
+skipping them is what stops a second attempt from emailing people twice.
+
+.PARAMETER ShowLastRun
+Print the run journal - who was already reached, and whether the run finished
+- then exit without touching Outlook.
+
 .EXAMPLE
 .\HighRise-Merge.ps1 -Csv contacts.csv -Template letter.txt -DryRun
 
@@ -98,12 +116,12 @@ Creates one Outlook draft per sendable recipient; review them in Drafts.
 .EXAMPLE
 .\HighRise-Merge.ps1 -Csv contacts.csv -Template letter.txt -Send -BccSelf me@example.com
 #>
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName = 'Merge')]
 param(
-    [Parameter(Mandatory = $true, Position = 0)]
+    [Parameter(ParameterSetName = 'Merge', Mandatory = $true, Position = 0)]
     [string]$Csv,
 
-    [Parameter(Mandatory = $true, Position = 1)]
+    [Parameter(ParameterSetName = 'Merge', Mandatory = $true, Position = 1)]
     [string]$Template,
 
     [string]$EmailColumn,
@@ -123,7 +141,15 @@ param(
     [string]$DoNotContact,
     # Ignore the do-not-contact list entirely. Deliberately awkward to reach:
     # it exists for testing, not for routine sending.
-    [switch]$IgnoreDoNotContact
+    [switch]$IgnoreDoNotContact,
+    # Durable run journal. Defaults to %APPDATA%\HighRise\last-run.json.
+    [string]$RunLog,
+    [switch]$NoRunLog,
+    # Re-deliver to people an unfinished previous run already reached.
+    # Deliberately awkward to reach, like -IgnoreDoNotContact.
+    [switch]$IgnorePreviousRun,
+    [Parameter(ParameterSetName = 'ShowLastRun', Mandatory = $true)]
+    [switch]$ShowLastRun
 )
 
 $ErrorActionPreference = 'Stop'
@@ -221,6 +247,145 @@ function Import-DoNotContact {
         }
     }
     return [pscustomobject]@{ Addresses = $addresses; Domains = $domains }
+}
+
+# ---------------------------------------------------------------------------
+# Durable run journal (mirrors SendRunLog.swift / SendRunLogStore)
+# ---------------------------------------------------------------------------
+#
+# $outcomes lives only in memory and is only written out at the very end, and
+# only when -ReportCsv was passed. So a crash, a closed console or Ctrl-C 300
+# recipients into a 1,000-recipient run used to destroy the only record of who
+# had already been emailed - which made an innocent "just run it again" a
+# silent double-send to those 300 people.
+#
+# The journal is written record-by-record as the run progresses and is only
+# marked finished once the delivery loop ends normally. An unfinished journal
+# for this same CSV + template therefore means "the last attempt died partway
+# through", and the addresses it already delivered to are skipped.
+#
+# Dates are ISO-8601 round-trip strings. This file is per-machine; unlike the
+# do-not-contact list it is not a cross-platform format.
+
+function Get-RunLogPath {
+    param([string]$Override)
+    if ($Override) { return $Override }
+    if ($env:APPDATA) { return (Join-Path $env:APPDATA 'HighRise\last-run.json') }
+    return (Join-Path $HOME 'HighRise\last-run.json')
+}
+
+function Import-RunLog {
+    param([string]$Path)
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return $null }
+    try {
+        $raw = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
+        if ($null -ne $raw) { $raw = $raw.TrimStart([char]0xFEFF, [char]0xFFFE).Trim() }
+        if (-not $raw) { return $null }
+        $log = ConvertFrom-Json -InputObject $raw
+    } catch {
+        # A corrupt journal must never quietly read as "nobody was reached" -
+        # that is exactly the double-send this file exists to prevent.
+        throw "The run journal at $Path could not be read: $($_.Exception.Message). Delete it or pass -NoRunLog once you are sure who was already emailed."
+    }
+    if ($null -eq $log) { return $null }
+    # ConvertFrom-Json unwraps a one-element array, so re-wrap defensively.
+    $records = @()
+    if ($null -ne $log.records) { $records = @($log.records) }
+    return [pscustomobject]@{
+        StartedAt = [string]$log.startedAt
+        Mode      = [string]$log.mode
+        Csv       = [string]$log.csv
+        Template  = [string]$log.template
+        Total     = [int]$log.total
+        Finished  = [bool]$log.finished
+        Records   = $records
+    }
+}
+
+function Save-RunLog {
+    param($Log, [string]$Path)
+    if (-not $Path) { return }
+    try {
+        $dir = Split-Path -Parent $Path
+        if ($dir -and -not (Test-Path -LiteralPath $dir)) {
+            [void](New-Item -ItemType Directory -Path $dir -Force)
+        }
+        $payload = [pscustomobject]@{
+            startedAt = $Log.StartedAt
+            mode      = $Log.Mode
+            csv       = $Log.Csv
+            template  = $Log.Template
+            total     = $Log.Total
+            finished  = [bool]$Log.Finished
+            records   = @($Log.Records)
+        }
+        $json = $payload | ConvertTo-Json -Depth 5
+        # Write beside the target and swap, so a kill mid-write cannot leave a
+        # half-written journal in place of a good one.
+        $tmp = "$Path.tmp"
+        Set-Content -LiteralPath $tmp -Value $json -Encoding UTF8
+        Move-Item -LiteralPath $tmp -Destination $Path -Force
+    } catch {
+        # Journaling must never be the thing that stops a run.
+        Write-Warning "Could not update the run journal at ${Path}: $($_.Exception.Message)"
+    }
+}
+
+function Add-RunLogRecord {
+    param($Log, [string]$Path, [string]$Email, [string]$Name,
+          [string]$Status, [string]$Reason = '')
+    if ($null -eq $Log) { return }
+    $Log.Records = @($Log.Records) + , [pscustomobject]@{
+        email  = $Email
+        name   = $Name
+        status = $Status
+        reason = $Reason
+        at     = (Get-Date).ToString('o')
+    }
+    Save-RunLog -Log $Log -Path $Path
+}
+
+# The addresses a journal records as actually reached. "would send"/"would
+# draft" rows from a dry run are not deliveries and never cause a skip.
+function Get-RunLogDelivered {
+    param($Log)
+    $delivered = @{}
+    if ($null -eq $Log) { return $delivered }
+    foreach ($r in @($Log.Records)) {
+        if ($null -eq $r) { continue }
+        $status = ([string]$r.status).ToLowerInvariant()
+        if ($status -ne 'sent' -and $status -ne 'drafted') { continue }
+        $address = ([string]$r.email).Trim().ToLowerInvariant()
+        if ($address) { $delivered[$address] = [string]$r.status }
+    }
+    return $delivered
+}
+
+function Show-RunLog {
+    param($Log, [string]$Path)
+    if ($null -eq $Log) {
+        Write-Host "No run journal at $Path - nothing has been recorded yet."
+        return
+    }
+    $delivered = Get-RunLogDelivered $Log
+    $state = 'finished normally'
+    if (-not $Log.Finished) { $state = 'DID NOT FINISH' }
+    Write-Host "Run journal: $Path"
+    Write-Host "Started:  $($Log.StartedAt)   Mode: $($Log.Mode)   $state"
+    Write-Host "List:     $($Log.Csv)"
+    Write-Host "Template: $($Log.Template)"
+    Write-Host "Reached $($delivered.Count) of $($Log.Total) recipient(s)."
+    Write-Host ''
+    foreach ($r in @($Log.Records)) {
+        if ($null -eq $r) { continue }
+        $detail = ''
+        if ($r.reason) { $detail = " - $($r.reason)" }
+        Write-Host ("  [{0}] {1} <{2}>{3}" -f ([string]$r.status).ToUpperInvariant(), $r.name, $r.email, $detail)
+    }
+    if (-not $Log.Finished) {
+        Write-Host ''
+        Write-Host 'This run did not finish. Re-running the same list and template will skip the recipients above.' -ForegroundColor Yellow
+    }
 }
 
 function Get-SuppressionCount {
@@ -674,11 +839,23 @@ function New-OutlookMessage {
 
 $rule = '-' * 60
 
+$runLogPath = $null
+if (-not $NoRunLog) { $runLogPath = Get-RunLogPath $RunLog }
+
+# 0. Just show the journal and stop.
+if ($ShowLastRun) {
+    if ($NoRunLog) { throw '-ShowLastRun and -NoRunLog contradict each other.' }
+    Show-RunLog -Log (Import-RunLog $runLogPath) -Path $runLogPath
+    exit 0
+}
+
 # 1. Template.
 $templateSpec = Read-TemplateFile $Template
+$templateFullPath = (Convert-Path -LiteralPath $Template)
 
 # 2. Recipients.
 $csvText = Read-TextFile $Csv
+$csvFullPath = (Convert-Path -LiteralPath $Csv)
 if ($csvText.Trim() -eq '') { throw "The CSV file is empty: $Csv" }
 if (-not $Delimiter) { $Delimiter = Get-CsvDelimiter $csvText }
 $rows = @($csvText | ConvertFrom-Csv -Delimiter $Delimiter)
@@ -812,9 +989,34 @@ Write-Host ''
 $sendable = @($previews | Where-Object { $null -eq $_.BlockingReason })
 $blocked = @($previews | Where-Object { $null -ne $_.BlockingReason })
 
+# 5b. An unfinished journal means the previous attempt died partway through.
+#     Skip whoever it already reached, so a second attempt does not email the
+#     same people twice.
+$previousLog = $null
+$alreadyDelivered = @{}
+if ($runLogPath) { $previousLog = Import-RunLog $runLogPath }
+if ($null -ne $previousLog -and -not $previousLog.Finished) {
+    $sameRun = ($previousLog.Csv -eq $csvFullPath -and $previousLog.Template -eq $templateFullPath)
+    $reached = Get-RunLogDelivered $previousLog
+    if (-not $sameRun) {
+        Write-Host "WARNING: the previous run (started $($previousLog.StartedAt)) did not finish, but it used a different list or template - nobody is being skipped." -ForegroundColor Yellow
+        Write-Host "         Run -ShowLastRun to see who it reached." -ForegroundColor Yellow
+        Write-Host ''
+    } elseif ($IgnorePreviousRun) {
+        Write-Host "WARNING: -IgnorePreviousRun was passed - the $($reached.Count) recipient(s) the unfinished previous run already reached will be contacted AGAIN." -ForegroundColor Yellow
+        Write-Host ''
+    } elseif ($reached.Count -gt 0) {
+        $alreadyDelivered = $reached
+        Write-Host "The previous run of this list started $($previousLog.StartedAt) and did not finish." -ForegroundColor Yellow
+        Write-Host "Skipping the $($reached.Count) recipient(s) it already reached. Pass -IgnorePreviousRun to contact them again." -ForegroundColor Yellow
+        Write-Host ''
+    }
+}
+
 # 6. Confirm before a real immediate send.
 if ($Send -and -not $DryRun -and -not $Force) {
-    Write-Host "About to SEND $($sendable.Count) message(s) immediately (no draft review)." -ForegroundColor Yellow
+    $toSend = @($sendable | Where-Object { -not $alreadyDelivered.ContainsKey($_.Email.ToLowerInvariant()) })
+    Write-Host "About to SEND $($toSend.Count) message(s) immediately (no draft review)." -ForegroundColor Yellow
     $answer = Read-Host "Type SEND to confirm, anything else to cancel"
     if ($answer -cne 'SEND') {
         Write-Host 'Cancelled - nothing was sent. Re-run without -Send to create drafts instead.'
@@ -829,6 +1031,28 @@ if (-not $DryRun) { $outlook = Connect-Outlook }
 $outcomes = @()
 $successes = 0
 $failures = 0
+$skipped = 0
+
+# Start this run's journal. It is saved again after every single recipient, so
+# whatever kills the run, the record of who was already reached survives.
+$journal = $null
+if ($runLogPath) {
+    $journal = [pscustomobject]@{
+        StartedAt = (Get-Date).ToString('o')
+        Mode      = $mode
+        Csv       = $csvFullPath
+        Template  = $templateFullPath
+        Total     = $previews.Count
+        Finished  = $false
+        Records   = @()
+    }
+    if ($DryRun) { $journal.Mode = "would $mode" }
+    # Carry the previous attempt's deliveries forward so the journal stays the
+    # single answer to "who has already been emailed", across both attempts.
+    if ($alreadyDelivered.Count -gt 0) { $journal.Records = @($previousLog.Records) }
+    Save-RunLog -Log $journal -Path $runLogPath
+}
+
 foreach ($preview in $previews) {
     $label = "$($preview.DisplayName) <$($preview.Email)>"
     if ($null -ne $preview.BlockingReason) {
@@ -836,6 +1060,19 @@ foreach ($preview in $previews) {
         $outcomes += , [pscustomobject]@{
             Name = $preview.DisplayName; Email = $preview.Email
             Status = 'blocked'; Detail = $preview.BlockingReason
+        }
+        Add-RunLogRecord -Log $journal -Path $runLogPath -Email $preview.Email `
+                         -Name $preview.DisplayName -Status 'blocked' -Reason $preview.BlockingReason
+        continue
+    }
+
+    $key = ([string]$preview.Email).Trim().ToLowerInvariant()
+    if ($alreadyDelivered.ContainsKey($key)) {
+        $skipped++
+        Write-Host "[SKIPPED] $label - already $($alreadyDelivered[$key]) by the unfinished previous run" -ForegroundColor Cyan
+        $outcomes += , [pscustomobject]@{
+            Name = $preview.DisplayName; Email = $preview.Email
+            Status = 'skipped'; Detail = "already $($alreadyDelivered[$key]) by the unfinished previous run"
         }
         continue
     }
@@ -858,6 +1095,8 @@ foreach ($preview in $previews) {
             Name = $preview.DisplayName; Email = $preview.Email
             Status = "would $mode"; Detail = ''
         }
+        Add-RunLogRecord -Log $journal -Path $runLogPath -Email $preview.Email `
+                         -Name $preview.DisplayName -Status "would $mode"
         continue
     }
 
@@ -870,12 +1109,18 @@ foreach ($preview in $previews) {
             $outcomes += , [pscustomobject]@{
                 Name = $preview.DisplayName; Email = $preview.Email; Status = 'sent'; Detail = ''
             }
+            # Journal it before the throttle sleep - that pause is the most
+            # likely moment for someone to close the window.
+            Add-RunLogRecord -Log $journal -Path $runLogPath -Email $preview.Email `
+                             -Name $preview.DisplayName -Status 'sent'
             if ($ThrottleSeconds -gt 0) { Start-Sleep -Seconds $ThrottleSeconds }
         } else {
             Write-Host "[DRAFTED] $label" -ForegroundColor Green
             $outcomes += , [pscustomobject]@{
                 Name = $preview.DisplayName; Email = $preview.Email; Status = 'drafted'; Detail = ''
             }
+            Add-RunLogRecord -Log $journal -Path $runLogPath -Email $preview.Email `
+                             -Name $preview.DisplayName -Status 'drafted'
         }
     } catch {
         $failures++
@@ -884,7 +1129,16 @@ foreach ($preview in $previews) {
             Name = $preview.DisplayName; Email = $preview.Email
             Status = 'failed'; Detail = $_.Exception.Message
         }
+        Add-RunLogRecord -Log $journal -Path $runLogPath -Email $preview.Email `
+                         -Name $preview.DisplayName -Status 'failed' -Reason $_.Exception.Message
     }
+}
+
+# The loop ran to the end. Only now is the journal finished - a journal still
+# marked unfinished is precisely how the next run knows it was interrupted.
+if ($null -ne $journal) {
+    $journal.Finished = $true
+    Save-RunLog -Log $journal -Path $runLogPath
 }
 
 # 8. Summary + optional report.
@@ -894,9 +1148,9 @@ if ($DryRun) {
     if ($Send) { $verb = 'sent' }
     Write-Host "Summary: $successes message(s) would be $verb, $($blocked.Count) blocked. No mail was touched."
 } elseif ($Send) {
-    Write-Host "Summary: $successes sent, $failures failed, $($blocked.Count) blocked."
+    Write-Host "Summary: $successes sent, $failures failed, $($blocked.Count) blocked, $skipped already reached by the previous run."
 } else {
-    Write-Host "Summary: $successes draft(s) created in Outlook's Drafts folder, $failures failed, $($blocked.Count) blocked."
+    Write-Host "Summary: $successes draft(s) created in Outlook's Drafts folder, $failures failed, $($blocked.Count) blocked, $skipped already reached by the previous run."
     if ($successes -gt 0) {
         Write-Host 'Open Outlook > Drafts to review and send them.'
     }

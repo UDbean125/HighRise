@@ -208,6 +208,92 @@ jobs:
           catch { $failed = $true }
           if (-not $failed) { throw 'A corrupt do-not-contact list did not stop the run' }
 
+      - name: Interrupted run is not re-sent under Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $csv = '.\Examples\sample-recipients.csv'
+          $tpl = '.\Windows\Examples\sample-template.txt'
+          $csvFull = (Convert-Path -LiteralPath $csv)
+          $tplFull = (Convert-Path -LiteralPath $tpl)
+          $log = Join-Path $env:RUNNER_TEMP 'run-journal.json'
+
+          function New-InterruptedJournal {
+            param([string]$Path, [string]$ForCsv, [string]$ForTemplate)
+            $fixture = [pscustomobject]@{
+              startedAt = '2026-01-01T09:00:00.0000000-05:00'
+              mode      = 'send'
+              csv       = $ForCsv
+              template  = $ForTemplate
+              total     = 5
+              finished  = $false
+              records   = @(
+                [pscustomobject]@{ email = 'sam@acme.com';   name = 'Sam'; status = 'sent'; reason = ''; at = '2026-01-01T09:00:01-05:00' },
+                [pscustomobject]@{ email = 'BOB@Initech.io'; name = 'Bob'; status = 'sent'; reason = ''; at = '2026-01-01T09:00:02-05:00' }
+              )
+            }
+            Set-Content -LiteralPath $Path -Value ($fixture | ConvertTo-Json -Depth 5) -Encoding UTF8
+          }
+
+          # A completed run leaves a journal marked finished, with every row.
+          Remove-Item -LiteralPath $log -ErrorAction SilentlyContinue
+          $first = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $tpl -RunLog $log -DryRun *>&1 | Out-String
+          Write-Host $first
+          if (-not (Test-Path -LiteralPath $log)) { throw 'The run wrote no journal' }
+          $saved = Get-Content -LiteralPath $log -Raw | ConvertFrom-Json
+          if (-not $saved.finished) { throw 'A run that reached the end left its journal marked unfinished' }
+          if (@($saved.records).Count -ne 5) { throw "Journal recorded $(@($saved.records).Count) of 5 rows" }
+
+          # A finished journal must never cause skips - that would break re-sending.
+          $again = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $tpl -RunLog $log -DryRun *>&1 | Out-String
+          if ($again.Contains('[SKIPPED]')) { throw 'A finished journal wrongly skipped recipients' }
+
+          # An unfinished journal for this same list means the last attempt died
+          # partway through: whoever it reached must not be emailed a second time.
+          New-InterruptedJournal -Path $log -ForCsv $csvFull -ForTemplate $tplFull
+          $resumed = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $tpl -RunLog $log -DryRun *>&1 | Out-String
+          Write-Host $resumed
+          if ($resumed -notlike '*did not finish*') { throw 'The interrupted previous run was not reported' }
+          if (-not $resumed.Contains('[SKIPPED] Sam <sam@acme.com>')) { throw 'An already-sent recipient was not skipped' }
+          if (-not $resumed.Contains('[SKIPPED] Bob')) { throw 'A recipient recorded in mixed case was not skipped - matching must be case insensitive' }
+          if ($resumed -notlike '*1 message(s) would be drafted*') { throw "Wrong number of recipients survived the skip: $resumed" }
+
+          # The carried-forward journal stays the single answer to "who already got it".
+          $merged = Get-Content -LiteralPath $log -Raw | ConvertFrom-Json
+          $sent = @($merged.records | Where-Object { $_.status -eq 'sent' })
+          if ($sent.Count -ne 2) { throw 'The previous run''s deliveries were dropped from the journal' }
+
+          # -ShowLastRun reports it, and needs no -Csv/-Template.
+          $shown = & .\Windows\HighRise-Merge.ps1 -ShowLastRun -RunLog $log *>&1 | Out-String
+          Write-Host $shown
+          if ($shown -notlike '*sam@acme.com*') { throw '-ShowLastRun did not list who was reached' }
+
+          # The escape hatch works and announces itself.
+          New-InterruptedJournal -Path $log -ForCsv $csvFull -ForTemplate $tplFull
+          $ignored = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $tpl -RunLog $log -IgnorePreviousRun -DryRun *>&1 | Out-String
+          if ($ignored -notlike '*WARNING: -IgnorePreviousRun*') { throw 'Ignoring the previous run was not announced' }
+          if ($ignored.Contains('[SKIPPED]')) { throw '-IgnorePreviousRun still skipped recipients' }
+
+          # An unfinished journal from a different list must not silently drop
+          # recipients out of this one.
+          New-InterruptedJournal -Path $log -ForCsv 'C:\somewhere\other-list.csv' -ForTemplate $tplFull
+          $onDisk = Get-Content -LiteralPath $log -Raw
+          $other = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $tpl -RunLog $log -DryRun *>&1 | Out-String -Width 500
+          if ($other -notlike '*different list or template*') { throw "A foreign unfinished journal was not reported.`nJournal on disk was:`n$onDisk`nRun said:`n$other" }
+          if ($other.Contains('[SKIPPED]')) { throw 'A foreign unfinished journal wrongly skipped recipients' }
+
+          # A corrupt journal must stop the run, never quietly re-email everyone.
+          Set-Content -LiteralPath $log -Value 'not json{{{' -Encoding UTF8
+          $failed = $false
+          try { & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $tpl -RunLog $log -DryRun *>&1 | Out-String | Write-Host }
+          catch { $failed = $true }
+          if (-not $failed) { throw 'A corrupt run journal did not stop the run' }
+
+          # -NoRunLog writes nothing at all.
+          $none = Join-Path $env:RUNNER_TEMP 'should-not-exist.json'
+          Remove-Item -LiteralPath $none -ErrorAction SilentlyContinue
+          & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $tpl -RunLog $none -NoRunLog -DryRun *>&1 | Out-Null
+          if (Test-Path -LiteralPath $none) { throw '-NoRunLog still wrote a journal' }
+
       - name: Dry run under Windows PowerShell 5.1
         shell: powershell
         run: |
