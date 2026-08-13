@@ -151,6 +151,10 @@ targets:
       - path: HighRise/Services/MarkdownToHTML.swift
       - path: HighRise/Services/Greeting.swift
       - path: HighRise/Services/NextStep.swift
+      # The durable "who was already emailed" journal. Shared with macOS
+      # rather than reimplemented so both platforms agree on the file format
+      # and on what counts as delivered.
+      - path: HighRise/Services/SendRunLog.swift
     settings:
       base:
         # Same bundle ID as the macOS `HighRise` target, deliberately — this

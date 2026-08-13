@@ -49,6 +49,8 @@ struct SendSessionView: View {
     @ViewBuilder
     private func inProgress(queue: SendQueue, current: MergePreview) -> some View {
         VStack(spacing: 20) {
+            resumedNotice(queue: queue)
+
             Text("\(queue.completedCount + 1) of \(queue.totalCount)")
                 .font(.headline)
 
@@ -73,22 +75,58 @@ struct SendSessionView: View {
             .buttonStyle(.borderedProminent)
 
             Button("Skip This Recipient") {
-                coordinator.queue?.recordOutcome(.skipped(reason: "Skipped by user"))
+                coordinator.recordOutcome(.skipped(reason: "Skipped by user"))
             }
             .buttonStyle(.bordered)
         }
     }
 
+    /// Explains why the queue is shorter than the list. Without this the
+    /// protection would be invisible — the user would just see a smaller
+    /// number and wonder who got dropped.
+    @ViewBuilder
+    private func resumedNotice(queue: SendQueue) -> some View {
+        let skipped = coordinator.resumedFromInterruptedCount
+        if skipped > 0 {
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Picking up where you left off",
+                      systemImage: "arrow.clockwise.circle.fill")
+                    .font(.subheadline.bold())
+                Text("\(skipped) recipient\(skipped == 1 ? "" : "s") already received this from an earlier run that was interrupted, so \(skipped == 1 ? "it isn't" : "they aren't") in this queue.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                // Only offered before this run has sent anything. Rebuilding
+                // the queue mid-run would put the people already emailed in
+                // *this* session back into it — the exact double-send the
+                // journal exists to prevent.
+                if queue.completedCount == 0 {
+                    Button("Email them again anyway") {
+                        coordinator.discardInterruptedRun()
+                        coordinator.startSendQueue()
+                    }
+                    .font(.footnote)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal)
+        }
+    }
+
+    /// Every outcome goes through the coordinator rather than mutating
+    /// `queue` directly, so each one is written to the durable run journal
+    /// as it happens — see `MobileCoordinator.recordOutcome`.
     private func handle(result: MFMailComposeResult, error: Error?) {
         switch result {
         case .sent:
-            coordinator.queue?.recordOutcome(.sent)
+            coordinator.recordOutcome(.sent)
         case .saved:
-            coordinator.queue?.recordOutcome(.drafted)
+            coordinator.recordOutcome(.drafted)
         case .cancelled:
             break // leave this recipient queued so the user can retry or skip
         case .failed:
-            coordinator.queue?.recordOutcome(.failed(reason: error?.localizedDescription ?? "Unknown error"))
+            coordinator.recordOutcome(.failed(reason: error?.localizedDescription ?? "Unknown error"))
         @unknown default:
             break
         }
