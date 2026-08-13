@@ -23,11 +23,15 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    # 1.1: the template gallery's industry/audience dropdowns + 6 tailored
-    # starters (PR #82). Bumped past 1.0.1 because that macOS train is
-    # APPROVED and closed — an upload still versioned 1.0.1 bounces with
-    # ITMS-90062/90186 (which is exactly what Cloud build 81 did).
-    MARKETING_VERSION: "1.1"
+    # 1.2: everything merged since the 1.1 gallery release — iOS session
+    # persistence, the iOS saved-template library, the do-not-contact list on
+    # iOS and Windows, and double-send protection.
+    #
+    # RULE: once Apple APPROVES a version, that train CLOSES. Any later upload
+    # still carrying that version bounces with ITMS-90062 + ITMS-90186. This
+    # has now happened twice — 1.0.1 (Cloud build 81) and 1.1 (build 110) —
+    # so bump this BEFORE the next Cloud build, not after the rejection email.
+    MARKETING_VERSION: "1.2"
     # Apple already has Builds 42, 46, 49, and 51 for version 1.0 on the App
     # Store Connect record — all unsandboxed ITMS-90296 rejections. 42/46/49
     # were the plain `HighRise` scheme; 51 came from the STALE external-drive
