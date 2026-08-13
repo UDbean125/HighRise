@@ -9,7 +9,10 @@ import XCTest
 final class MobileCoordinatorSendSessionTests: XCTestCase {
 
     private func makeCoordinatorWithFinishedRun() -> MobileCoordinator {
-        let coordinator = MobileCoordinator()
+        // An inert run journal (`directory: nil`) so these tests can't be
+        // perturbed by — or leave behind — a real one in the app container.
+        // The journal's own behavior is covered in MobileRunJournalTests.
+        let coordinator = MobileCoordinator(runLog: SendRunLogStore(directory: nil))
         coordinator.importCSV(data: Data("""
         Name,Email
         Ada,ada@example.com
@@ -19,7 +22,7 @@ final class MobileCoordinatorSendSessionTests: XCTestCase {
         coordinator.refreshPreviews()
         coordinator.startSendQueue()
         while coordinator.queue?.isFinished == false {
-            coordinator.queue?.recordOutcome(.sent)
+            coordinator.recordOutcome(.sent)
         }
         return coordinator
     }

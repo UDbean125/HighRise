@@ -159,6 +159,17 @@ Send themselves, one recipient at a time — so there's no batch/background
 send or throttling on iOS. See `HighRiseMobile/HighRiseMobileApp.swift` for
 the flow (import → template → review → send queue).
 
+Because iOS terminates backgrounded apps without warning — and working
+through a send queue one Mail sheet at a time takes a while — the app writes
+a **run journal** to disk as each recipient is handled, the same
+`last-run.json` the macOS app writes (and the same protection the Windows
+script has). If the app is killed 40 recipients into a run, the next launch
+restores the list and template as before, but the rebuilt send queue leaves
+out those 40: re-importing the same list and pressing Send can no longer
+email them a second time. The send screen says how many were skipped and why,
+and offers "Email them again anyway" (before the new run has sent anything)
+so the protection can't become a trap.
+
 Opening the app lands on a Home dashboard — a smaller version of the macOS
 app's (`HomeView.swift` on both sides share the same `Greeting`/`NextStep`
 logic): a "what to do next" card plus quick jumps to Compose/Import/Review/

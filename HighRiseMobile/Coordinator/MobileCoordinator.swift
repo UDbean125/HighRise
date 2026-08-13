@@ -23,14 +23,35 @@ final class MobileCoordinator: ObservableObject {
     private let doNotContact: DoNotContactStore
     @Published private(set) var suppressionEntries: [SuppressionEntry] = []
 
+    /// A durable, record-by-record journal of who has already been emailed.
+    ///
+    /// `SendQueue` lives only in memory, and iOS terminates backgrounded apps
+    /// without warning — while the iOS send flow is inherently long, because
+    /// it is one `MFMailComposeViewController` sheet per recipient with the
+    /// user tapping Send each time. So a kill 40 recipients into a 100-person
+    /// run used to leave no trace at all: the next launch restored the list
+    /// and the template, rebuilt the queue from *every* sendable recipient,
+    /// and silently emailed those 40 people a second time. The Mac has had
+    /// this protection (`SendRunLog`); Windows gained it in its run journal.
+    /// This is the same type writing the same file.
+    private let runLog: SendRunLogStore
+    private var currentRunJournal: SendRunLog?
+
+    /// The journal of a run that never finished — i.e. the app was killed
+    /// mid-send. Surfaced in the UI, and subtracted from the next queue.
+    @Published private(set) var incompleteLastRun: SendRunLog?
+
     /// Every store is injectable so tests never read or write the real
     /// container.
     init(sessionStore: MobileSessionStore = MobileSessionStore(),
          library: TemplateLibraryStore = TemplateLibraryStore(),
-         doNotContact: DoNotContactStore = DoNotContactStore()) {
+         doNotContact: DoNotContactStore = DoNotContactStore(),
+         runLog: SendRunLogStore = SendRunLogStore()) {
         self.sessionStore = sessionStore
         self.library = library
         self.doNotContact = doNotContact
+        self.runLog = runLog
+        incompleteLastRun = runLog.loadIncomplete()
         savedTemplates = library.templates
         suppressionEntries = doNotContact.entries
         restoreSession()
@@ -342,6 +363,10 @@ final class MobileCoordinator: ObservableObject {
         lastRunOutcomes = []
         previews = []
         sessionStore.clear()
+        // "Start over" has to clear the journal too, or a run interrupted
+        // before the reset would keep filtering a brand-new list.
+        discardInterruptedRun()
+        currentRunJournal = nil
     }
 
     /// Builds a fresh send queue from whatever's currently sendable. Called
@@ -349,10 +374,110 @@ final class MobileCoordinator: ObservableObject {
     /// finished one, which previously dead-ended sending forever (the queue
     /// was only ever cleared by a re-import). A finished run's outcomes are
     /// snapshotted first so the Home dashboard's state survives.
+    ///
+    /// Anyone an *interrupted* run already reached is left out. That is the
+    /// whole point of the journal: re-importing the same list and pressing
+    /// Send is the innocent gesture that would otherwise double-email them.
     func startSendQueue() {
         if let finished = queue, finished.isFinished, !finished.outcomes.isEmpty {
             lastRunOutcomes = finished.outcomes
         }
-        queue = SendQueue(items: previews.filter(\.isSendable))
+        let delivered = interruptedDeliveries
+        let items = previews
+            .filter(\.isSendable)
+            .filter { !delivered.contains($0.contact.email.lowercased()) }
+        resumedFromInterruptedCount = delivered.count
+        queue = SendQueue(items: items)
+        openRunJournal(total: items.count)
+        // Nothing left to send means the campaign is actually done — close
+        // the journal now, or it stays "interrupted" forever and keeps
+        // filtering lists it has nothing to do with.
+        if items.isEmpty { finishRunJournal() }
+    }
+
+    // MARK: - Run journal
+
+    /// Addresses already reached by a run that never finished.
+    ///
+    /// A *finished* run filters nothing — starting another send to the same
+    /// list is a deliberate act, and the app should not silently refuse it.
+    private var interruptedDeliveries: Set<String> {
+        guard let journal = currentRunJournal ?? incompleteLastRun,
+              !journal.finished else { return [] }
+        return Set(journal.records
+            .filter { $0.status == "sent" || $0.status == "drafted" }
+            .map { $0.email.lowercased() })
+    }
+
+    /// How many people the interrupted run had already reached at the moment
+    /// the current queue was built. Frozen there on purpose: reading
+    /// `interruptedDeliveries` live would climb as this run sends, and the
+    /// notice is about the *previous* run, not this one.
+    @Published private(set) var resumedFromInterruptedCount = 0
+
+    /// Opens the journal for a run that is about to start. An interrupted
+    /// run's records are carried forward rather than overwritten: if the
+    /// resumed run is *also* killed, the next launch still has to know about
+    /// everyone the first one emailed.
+    private func openRunJournal(total: Int) {
+        var journal: SendRunLog
+        if let carried = incompleteLastRun, !carried.finished {
+            journal = carried
+            journal.total = journal.deliveredCount + total
+            journal.finished = false
+        } else {
+            journal = SendRunLog(startedAt: Date(), mode: "sent", total: total)
+        }
+        currentRunJournal = journal
+        runLog.save(journal)
+    }
+
+    /// Records what happened to the current recipient — in the live queue and,
+    /// durably, in the journal. The disk write happens per recipient on
+    /// purpose: a batched write is exactly the record a mid-run kill destroys.
+    func recordOutcome(_ status: SendOutcome.Status) {
+        guard let contact = queue?.current?.contact else { return }
+        queue?.recordOutcome(status)
+
+        let statusText: String
+        let reason: String?
+        switch status {
+        case .sent: statusText = "sent"; reason = nil
+        case .drafted: statusText = "drafted"; reason = nil
+        case .skipped(let why): statusText = "skipped"; reason = why
+        case .failed(let why): statusText = "failed"; reason = why
+        }
+
+        if var journal = currentRunJournal {
+            journal.records.append(SendRunLog.Record(email: contact.email,
+                                                     name: contact.displayName,
+                                                     status: statusText,
+                                                     reason: reason,
+                                                     at: Date()))
+            currentRunJournal = journal
+            runLog.save(journal)
+        }
+
+        if queue?.isFinished == true { finishRunJournal() }
+    }
+
+    /// Closes the journal once the run ends normally. A closed journal stops
+    /// filtering future queues and is no longer offered as interrupted.
+    private func finishRunJournal() {
+        guard var journal = currentRunJournal else { return }
+        journal.finished = true
+        currentRunJournal = journal
+        runLog.save(journal)
+        incompleteLastRun = nil
+    }
+
+    /// Forgets an interrupted run without resuming it — the deliberate
+    /// "email them anyway" escape hatch, so the protection is never a trap.
+    func discardInterruptedRun() {
+        guard var journal = incompleteLastRun else { return }
+        journal.finished = true
+        runLog.save(journal)
+        incompleteLastRun = nil
+        currentRunJournal = nil
     }
 }
