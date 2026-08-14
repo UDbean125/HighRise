@@ -310,12 +310,15 @@ jobs:
           $clean = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template '.\Windows\Examples\sample-template.txt' -DryRun *>&1 | Out-String -Width 500
           if ($clean -like "*$marker*") { throw "A well-formed template was wrongly flagged: $clean" }
 
-          # An unclosed brace in the subject.
+          # An unclosed brace in the subject. The body deliberately uses {{Name}},
+          # a column this CSV really has, so rows still merge and a preview is
+          # actually rendered - the surviving-token assertion below has nothing
+          # to look at if every row gets blocked first.
           $badSubject = Join-Path $env:RUNNER_TEMP 'bad-subject.txt'
           Set-Content -LiteralPath $badSubject -Encoding UTF8 -Value @(
             'Subject: Quick question about {{Company',
             '',
-            'Hi {{First Name}}, thanks for your time.'
+            'Hi {{Name}}, thanks for your time.'
           )
           $s = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $badSubject -DryRun *>&1 | Out-String -Width 500
           Write-Host $s
