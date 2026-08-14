@@ -294,6 +294,61 @@ jobs:
           & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $tpl -RunLog $none -NoRunLog -DryRun *>&1 | Out-Null
           if (Test-Path -LiteralPath $none) { throw '-NoRunLog still wrote a journal' }
 
+      # A malformed token cannot be stripped, because the merge regex never
+      # matches it in the first place - it reaches the recipient verbatim. macOS
+      # and iOS warn about unbalanced braces; this pins the same warning here.
+      # Out-String needs an explicit -Width: the warning is longer than the
+      # default 80-column wrap, and a wrapped line fails -like silently.
+      - name: Malformed merge-field braces are reported under Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $csv = '.\Examples\sample-recipients.csv'
+          $marker = 'Unclosed merge field'
+
+          # First, the negative case: a well-formed template must stay silent.
+          # A check that cries wolf on every run is one people learn to ignore.
+          $clean = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template '.\Windows\Examples\sample-template.txt' -DryRun *>&1 | Out-String -Width 500
+          if ($clean -like "*$marker*") { throw "A well-formed template was wrongly flagged: $clean" }
+
+          # An unclosed brace in the subject.
+          $badSubject = Join-Path $env:RUNNER_TEMP 'bad-subject.txt'
+          Set-Content -LiteralPath $badSubject -Encoding UTF8 -Value @(
+            'Subject: Quick question about {{Company',
+            '',
+            'Hi {{First Name}}, thanks for your time.'
+          )
+          $s = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $badSubject -DryRun *>&1 | Out-String -Width 500
+          Write-Host $s
+          if ($s -notlike "*$marker*") { throw "An unclosed brace in the subject was not reported: $s" }
+          if ($s -notlike '*WARNING: Subject:*') { throw "The warning did not name the subject: $s" }
+          # This is the whole reason the warning has to exist: the broken token
+          # is not stripped like an unresolved one, it survives into the message.
+          if ($s -notlike '*{{Company*') { throw "The malformed token did not survive - this test no longer proves anything: $s" }
+          # A balanced body alongside it must not also be flagged.
+          if ($s -like '*WARNING: Body:*') { throw "A balanced body was wrongly flagged: $s"  }
+
+          # An unclosed brace in the body.
+          $badBody = Join-Path $env:RUNNER_TEMP 'bad-body.txt'
+          Set-Content -LiteralPath $badBody -Encoding UTF8 -Value @(
+            'Subject: Quick question',
+            '',
+            'Hi {{First Name, thanks for your time.'
+          )
+          $b = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $badBody -DryRun *>&1 | Out-String -Width 500
+          Write-Host $b
+          if ($b -notlike '*WARNING: Body:*') { throw "An unclosed brace in the body was not reported: $b" }
+          if ($b -like '*WARNING: Subject:*') { throw "A balanced subject was wrongly flagged: $b" }
+
+          # A stray closer with no opener is just as broken as a stray opener.
+          $strayClose = Join-Path $env:RUNNER_TEMP 'stray-close.txt'
+          Set-Content -LiteralPath $strayClose -Encoding UTF8 -Value @(
+            'Subject: Quick question',
+            '',
+            'Hi there}} - thanks for your time.'
+          )
+          $c = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $strayClose -DryRun *>&1 | Out-String -Width 500
+          if ($c -notlike "*$marker*") { throw "A stray closing brace was not reported: $c" }
+
       - name: Dry run under Windows PowerShell 5.1
         shell: powershell
         run: |
