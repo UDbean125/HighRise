@@ -11,7 +11,10 @@ every message before it goes out.
 It uses the same template syntax and the same safety rules as the Mac app: a
 raw `{{placeholder}}` is never leaked to a recipient, and rows with missing
 data, an invalid address, a duplicate address, or a missing attachment file are
-blocked and reported instead of sent.
+blocked and reported instead of sent. A *malformed* field — `{{Company` with no
+closing braces — isn't a placeholder at all, so it can't be stripped; the run
+warns you about the unbalanced braces before drafting anything, on `-DryRun`
+too, exactly as the Mac and iPhone apps do.
 
 ## Easy mode — the clickable window (no commands)
 

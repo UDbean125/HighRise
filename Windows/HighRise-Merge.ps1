@@ -30,7 +30,9 @@ A row is blocked (never drafted/sent) when it has an invalid or missing email,
 is missing data for a placeholder that has no fallback, repeats an earlier
 row's address, or names a per-recipient attachment file that doesn't exist.
 Unresolved placeholders are removed from the output - a raw {{...}} never
-reaches a recipient.
+reaches a recipient. A malformed one - "{{Company" with no closing braces - is
+not a placeholder at all and so cannot be stripped; the run warns about the
+unbalanced braces up front, including under -DryRun.
 
 .PARAMETER Csv
 Path to the recipients list (.csv). Comma, semicolon, and tab delimiters are
@@ -574,6 +576,21 @@ function Invoke-MergeFilter {
 
 $script:PlaceholderRegex = [regex]'\{\{\s*([^{}]+?)\s*\}\}'
 
+# The placeholder regex deliberately refuses to match across a brace, so an
+# unbalanced token like "{{Company" is never seen as a placeholder at all: it
+# is not resolved, not recorded as unresolved, and not stripped - it survives
+# verbatim into the subject or body the recipient reads. Counting the braces is
+# the only thing that catches it. Mirrors PlaceholderCheck.malformedWarning on
+# macOS/iOS, message included, so the three platforms say the same thing.
+function Get-MalformedPlaceholderWarning {
+    param([string]$Text)
+    if ([string]::IsNullOrEmpty($Text)) { return $null }
+    $opens = ([regex]::Matches($Text, '\{\{')).Count
+    $closes = ([regex]::Matches($Text, '\}\}')).Count
+    if ($opens -eq $closes) { return $null }
+    return 'Unclosed merge field - check your {{ }} braces so every field fills in.'
+}
+
 # Parses the inner text of one {{ ... }} into a name, an optional fallback
 # (first default: / bare-text filter), and the transforming filters in order.
 function ConvertTo-PlaceholderToken {
@@ -852,6 +869,20 @@ if ($ShowLastRun) {
 # 1. Template.
 $templateSpec = Read-TemplateFile $Template
 $templateFullPath = (Convert-Path -LiteralPath $Template)
+
+# A malformed token is a template-level typo, so it would hit every recipient
+# at once. Say so before anything is drafted, and say it on -DryRun too - a dry
+# run is exactly where this is meant to be caught. It warns rather than blocks:
+# the count is a heuristic, and an HTML template with minified CSS can trip it.
+foreach ($part in @(
+    @{ Name = 'Subject'; Text = $templateSpec.Subject },
+    @{ Name = 'Body'; Text = $templateSpec.Body }
+)) {
+    $braceWarning = Get-MalformedPlaceholderWarning $part.Text
+    if ($braceWarning) {
+        Write-Host ("WARNING: {0}: {1}" -f $part.Name, $braceWarning) -ForegroundColor Yellow
+    }
+}
 
 # 2. Recipients.
 $csvText = Read-TextFile $Csv
