@@ -25,6 +25,7 @@ enum PreSendReport {
     enum Block: String {
         case invalidEmail = "Invalid or missing email"
         case suppressed = "On do-not-contact list"
+        case malformedField = "Unclosed merge field"
         case missingData = "Missing merge data"
         case missingAttachment = "Attachment file not found"
         case duplicate = "Duplicate address"
@@ -34,6 +35,7 @@ enum PreSendReport {
         if preview.isSendable { return nil }
         if !preview.hasValidEmail { return .invalidEmail }
         if preview.isSuppressed { return .suppressed }
+        if !preview.malformedPlaceholders.isEmpty { return .malformedField }
         if !preview.unresolvedFields.isEmpty { return .missingData }
         if !preview.missingAttachmentPaths.isEmpty { return .missingAttachment }
         if preview.isDuplicate { return .duplicate }
@@ -111,7 +113,7 @@ enum PreSendReport {
     // MARK: - Helpers
 
     private static let orderedBlocks: [Block] =
-        [.invalidEmail, .suppressed, .missingData, .missingAttachment, .duplicate]
+        [.invalidEmail, .suppressed, .malformedField, .missingData, .missingAttachment, .duplicate]
 
     private static func account(for input: Input) -> String {
         switch input.client {

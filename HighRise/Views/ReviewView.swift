@@ -120,6 +120,7 @@ struct ReviewView: View {
         switch category {
         case .invalidEmail:      return "invalid email"
         case .suppressed:        return "do-not-contact"
+        case .malformedField:    return "unclosed field"
         case .missingData:       return "missing data"
         case .missingAttachment: return "missing file"
         case .duplicate:         return "duplicate"
@@ -130,6 +131,7 @@ struct ReviewView: View {
         switch category {
         case .invalidEmail:      return "envelope.badge"
         case .suppressed:        return "nosign"
+        case .malformedField:    return "curlybraces"
         case .missingData:       return "exclamationmark.triangle.fill"
         case .missingAttachment: return "paperclip"
         case .duplicate:         return "person.2.slash"

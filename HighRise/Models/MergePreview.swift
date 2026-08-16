@@ -17,6 +17,12 @@ struct MergePreview: Identifiable {
     /// so these are blocked from sending by default.
     let unresolvedFields: [String]
 
+    /// Brace fragments still sitting in the *merged* text — `{{Company` with no
+    /// closing braces never matches the merge regex, so it isn't reported as
+    /// unresolved; it just renders verbatim. Blocked, because the promise is
+    /// that no raw `{{…}}` ever reaches a recipient.
+    let malformedPlaceholders: [String]
+
     /// Whether `contact.email` is a syntactically valid address.
     let hasValidEmail: Bool
 
@@ -37,7 +43,8 @@ struct MergePreview: Identifiable {
     let missingAttachmentPaths: [String]
 
     init(id: UUID, contact: Contact, resolvedSubject: String, resolvedBody: String,
-         unresolvedFields: [String], hasValidEmail: Bool,
+         unresolvedFields: [String], malformedPlaceholders: [String] = [],
+         hasValidEmail: Bool,
          isDuplicate: Bool = false, isSuppressed: Bool = false,
          attachmentPaths: [String] = [], missingAttachmentPaths: [String] = []) {
         self.id = id
@@ -45,6 +52,7 @@ struct MergePreview: Identifiable {
         self.resolvedSubject = resolvedSubject
         self.resolvedBody = resolvedBody
         self.unresolvedFields = unresolvedFields
+        self.malformedPlaceholders = malformedPlaceholders
         self.hasValidEmail = hasValidEmail
         self.isDuplicate = isDuplicate
         self.isSuppressed = isSuppressed
@@ -56,7 +64,8 @@ struct MergePreview: Identifiable {
     /// placeholders, isn't a repeat of an earlier row, isn't suppressed, and all
     /// of its per-recipient attachment files exist.
     var isSendable: Bool {
-        hasValidEmail && unresolvedFields.isEmpty && !isDuplicate && !isSuppressed
+        hasValidEmail && unresolvedFields.isEmpty && malformedPlaceholders.isEmpty
+            && !isDuplicate && !isSuppressed
             && missingAttachmentPaths.isEmpty
     }
 
@@ -68,6 +77,10 @@ struct MergePreview: Identifiable {
         }
         if isSuppressed {
             return "On your do-not-contact list — \(contact.email) is skipped."
+        }
+        if !malformedPlaceholders.isEmpty {
+            let quoted = malformedPlaceholders.map { "“\($0)”" }.joined(separator: ", ")
+            return "\(PlaceholderCheck.message) Found \(quoted)."
         }
         if !unresolvedFields.isEmpty {
             let list = unresolvedFields.joined(separator: ", ")

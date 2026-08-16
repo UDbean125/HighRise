@@ -40,6 +40,45 @@ struct TemplateMergeEngineTests {
         #expect(!preview.isSendable) // blocked from sending
     }
 
+    @Test("A malformed field in the body blocks the row instead of shipping raw braces")
+    func malformedBodyBlocks() {
+        let template = EmailTemplate(subject: "Hi {{Name}}", body: "How is {{Company doing?")
+        let preview = TemplateMergeEngine.merge(template: template,
+                                                with: contact(["Name": "Ada", "Company": "Acme"]))
+        // Nothing is "unresolved" — the regex never saw a field here at all.
+        #expect(preview.unresolvedFields.isEmpty)
+        #expect(preview.malformedPlaceholders == ["{{Company doing?"])
+        #expect(!preview.isSendable)
+        #expect(preview.blockingReason?.contains("Unclosed merge field") == true)
+    }
+
+    @Test("A malformed field in the subject blocks the row too")
+    func malformedSubjectBlocks() {
+        let template = EmailTemplate(subject: "Quote for {{Company", body: "Hi {{Name}}")
+        let preview = TemplateMergeEngine.merge(template: template,
+                                                with: contact(["Name": "Ada", "Company": "Acme"]))
+        #expect(preview.malformedPlaceholders == ["{{Company"])
+        #expect(!preview.isSendable)
+    }
+
+    @Test("A clean merge reports no malformed placeholders")
+    func wellFormedStaysSendable() {
+        let template = EmailTemplate(subject: "Hi {{Name}}", body: "About {{Company}}.")
+        let preview = TemplateMergeEngine.merge(template: template,
+                                                with: contact(["Name": "Ada", "Company": "Acme"]))
+        #expect(preview.malformedPlaceholders.isEmpty)
+        #expect(preview.isSendable)
+    }
+
+    @Test("Braces arriving from contact data are caught, not just template typos")
+    func bracesFromDataBlock() {
+        let template = EmailTemplate(subject: "Hi {{Name}}", body: "About {{Company}}.")
+        let preview = TemplateMergeEngine.merge(template: template,
+                                                with: contact(["Name": "Ada", "Company": "{{Company}}"]))
+        #expect(!preview.malformedPlaceholders.isEmpty)
+        #expect(!preview.isSendable)
+    }
+
     @Test("An empty field counts as unresolved")
     func emptyFieldUnresolved() {
         let template = EmailTemplate(subject: "Hi {{Name}}", body: "x")
