@@ -8,13 +8,15 @@ import Foundation
 struct PreSendReportTests {
 
     private func preview(email: String, unresolved: [String] = [],
+                         malformed: [String] = [],
                          validEmail: Bool = true, duplicate: Bool = false,
                          suppressed: Bool = false, missingAttachment: Bool = false,
                          name: String = "Test Person") -> MergePreview {
         MergePreview(id: UUID(),
                      contact: Contact(fields: ["Full Name": name], email: email),
                      resolvedSubject: "Hi", resolvedBody: "Body",
-                     unresolvedFields: unresolved, hasValidEmail: validEmail,
+                     unresolvedFields: unresolved, malformedPlaceholders: malformed,
+                     hasValidEmail: validEmail,
                      isDuplicate: duplicate, isSuppressed: suppressed,
                      attachmentPaths: missingAttachment ? ["/nope/a.pdf"] : [],
                      missingAttachmentPaths: missingAttachment ? ["/nope/a.pdf"] : [])
@@ -37,6 +39,7 @@ struct PreSendReportTests {
         #expect(PreSendReport.category(of: preview(email: "a@b.com")) == nil)              // sendable
         #expect(PreSendReport.category(of: preview(email: "bad", validEmail: false)) == .invalidEmail)
         #expect(PreSendReport.category(of: preview(email: "a@b.com", suppressed: true)) == .suppressed)
+        #expect(PreSendReport.category(of: preview(email: "a@b.com", malformed: ["{{Company"])) == .malformedField)
         #expect(PreSendReport.category(of: preview(email: "a@b.com", unresolved: ["First Name"])) == .missingData)
         #expect(PreSendReport.category(of: preview(email: "a@b.com", missingAttachment: true)) == .missingAttachment)
         #expect(PreSendReport.category(of: preview(email: "a@b.com", duplicate: true)) == .duplicate)

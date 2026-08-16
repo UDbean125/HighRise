@@ -63,12 +63,20 @@ enum TemplateMergeEngine {
             : effective.body
         let body = substitute(bodyTemplate, template.format.isHTMLDelivery)
 
+        // Last line of defence for "no raw {{placeholder}} reaches a recipient":
+        // the regex above only sees well-formed fields, so a malformed one
+        // (`{{Company` with no closing braces) survives substitution untouched.
+        // Scanning what actually rendered catches it and blocks the row.
+        let malformed = PlaceholderCheck.leftoverBraceFragments(in: subject)
+            + PlaceholderCheck.leftoverBraceFragments(in: body)
+
         return MergePreview(
             id: contact.id,
             contact: contact,
             resolvedSubject: subject,
             resolvedBody: body,
             unresolvedFields: unresolved,
+            malformedPlaceholders: malformed,
             hasValidEmail: EmailValidator.isValid(contact.email),
             isDuplicate: isDuplicate,
             isSuppressed: isSuppressed,
