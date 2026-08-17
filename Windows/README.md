@@ -12,9 +12,13 @@ It uses the same template syntax and the same safety rules as the Mac app: a
 raw `{{placeholder}}` is never leaked to a recipient, and rows with missing
 data, an invalid address, a duplicate address, or a missing attachment file are
 blocked and reported instead of sent. A *malformed* field — `{{Company` with no
-closing braces — isn't a placeholder at all, so it can't be stripped; the run
-warns you about the unbalanced braces before drafting anything, on `-DryRun`
-too, exactly as the Mac and iPhone apps do.
+closing braces — isn't a placeholder at all, so it can't be stripped. Two things
+catch it, exactly as on the Mac and iPhone: the run warns you about unbalanced
+braces in the template before drafting anything, and every merged subject and
+body is scanned for leftover braces so any row still carrying them is blocked,
+with the offending text quoted back to you. That second check is what catches
+braces arriving in a spreadsheet *value* rather than the template. Both apply on
+`-DryRun` too.
 
 ## Easy mode — the clickable window (no commands)
 

@@ -295,9 +295,11 @@ jobs:
           if (Test-Path -LiteralPath $none) { throw '-NoRunLog still wrote a journal' }
 
       # A malformed token cannot be stripped, because the merge regex never
-      # matches it in the first place - it reaches the recipient verbatim. macOS
-      # and iOS warn about unbalanced braces; this pins the same warning here.
-      # Out-String needs an explicit -Width: the warning is longer than the
+      # matches it in the first place - it reaches the recipient verbatim. Two
+      # defences are pinned here, matching macOS/iOS: an up-front warning about
+      # unbalanced braces in the template, and a hard per-row block when the
+      # *merged* subject or body still shows braces.
+      # Out-String needs an explicit -Width: the messages are longer than the
       # default 80-column wrap, and a wrapped line fails -like silently.
       - name: Malformed merge-field braces are reported under Windows PowerShell 5.1
         shell: powershell
@@ -309,11 +311,17 @@ jobs:
           # A check that cries wolf on every run is one people learn to ignore.
           $clean = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template '.\Windows\Examples\sample-template.txt' -DryRun *>&1 | Out-String -Width 500
           if ($clean -like "*$marker*") { throw "A well-formed template was wrongly flagged: $clean" }
+          if ($clean -notlike '*3 message(s) would be drafted, 2 blocked*') { throw "A well-formed template lost recipients to the brace check: $clean" }
+          # Regression guard: the fragment list is unrolled by PowerShell, so a
+          # comma-wrapped return handed the caller the list object itself and
+          # every clean row was blocked over an empty quote - Found "", "".
+          # An empty quote in the output means that has come back.
+          if ($clean -like '*Found ""*') { throw "The brace check reported an empty fragment: $clean" }
 
           # An unclosed brace in the subject. The body deliberately uses {{Name}},
-          # a column this CSV really has, so rows still merge and a preview is
-          # actually rendered - the surviving-token assertion below has nothing
-          # to look at if every row gets blocked first.
+          # a column this CSV really has, so the only thing wrong with these rows
+          # is the malformed subject - that is what the block below must be
+          # attributed to.
           $badSubject = Join-Path $env:RUNNER_TEMP 'bad-subject.txt'
           Set-Content -LiteralPath $badSubject -Encoding UTF8 -Value @(
             'Subject: Quick question about {{Company',
@@ -324,11 +332,17 @@ jobs:
           Write-Host $s
           if ($s -notlike "*$marker*") { throw "An unclosed brace in the subject was not reported: $s" }
           if ($s -notlike '*WARNING: Subject:*') { throw "The warning did not name the subject: $s" }
-          # This is the whole reason the warning has to exist: the broken token
-          # is not stripped like an unresolved one, it survives into the message.
-          if ($s -notlike '*{{Company*') { throw "The malformed token did not survive - this test no longer proves anything: $s" }
           # A balanced body alongside it must not also be flagged.
           if ($s -like '*WARNING: Body:*') { throw "A balanced body was wrongly flagged: $s"  }
+          # The point of the whole exercise: the broken token is not stripped
+          # like an unresolved one, so every row carrying it must be held back
+          # rather than mailed. Nobody is drafted; the reason quotes the token.
+          if ($s -notlike '*0 message(s) would be drafted, 5 blocked*') { throw "A malformed subject did not block every row: $s" }
+          # Square brackets are a character class to -like, so they need escaping
+          # here - unescaped, '*[BLOCKED]*' matches any line containing a B or an
+          # L and the assertion silently never fails.
+          if ($s -notlike '*`[BLOCKED`]*') { throw "No row was reported as blocked: $s" }
+          if ($s -notlike '*Found "{{Company"*') { throw "The blocking reason did not quote the malformed token: $s" }
 
           # An unclosed brace in the body.
           $badBody = Join-Path $env:RUNNER_TEMP 'bad-body.txt'
@@ -351,6 +365,35 @@ jobs:
           )
           $c = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $strayClose -DryRun *>&1 | Out-String -Width 500
           if ($c -notlike "*$marker*") { throw "A stray closing brace was not reported: $c" }
+
+          # Braces that arrive in a CSV *value* rather than the template. The
+          # up-front count check inspects the template only and is blind to
+          # this by construction, so the merged-text scan is the sole defence -
+          # and the row must still be held back.
+          $braceCsv = Join-Path $env:RUNNER_TEMP 'brace-value.csv'
+          Set-Content -LiteralPath $braceCsv -Encoding UTF8 -Value @(
+            'Name,Company,Email',
+            'Sam,{{Acme,sam@acme.com',
+            'Dana,Toys,dana@toys.example'
+          )
+          $v = & .\Windows\HighRise-Merge.ps1 -Csv $braceCsv -Template '.\Windows\Examples\sample-template.txt' -DryRun *>&1 | Out-String -Width 500
+          Write-Host $v
+          if ($v -like '*WARNING: Subject:*') { throw "A clean template was flagged over a data value: $v" }
+          if ($v -notlike '*1 message(s) would be drafted, 1 blocked*') { throw "A brace in a CSV value did not block exactly its own row: $v" }
+          if ($v -notlike '*Found "{{Acme"*') { throw "The blocking reason did not quote the token from the data: $v" }
+
+          # Two typos that happen to balance slip past a count of braces, which
+          # is precisely why the count cannot be the only defence.
+          $balanced = Join-Path $env:RUNNER_TEMP 'balanced-typos.txt'
+          Set-Content -LiteralPath $balanced -Encoding UTF8 -Value @(
+            'Subject: Quick question',
+            '',
+            'Hi {{Name}, about }}your account.'
+          )
+          $z = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $balanced -DryRun *>&1 | Out-String -Width 500
+          Write-Host $z
+          if ($z -like '*WARNING: Body:*') { throw "This fixture is meant to balance - the count check should stay silent: $z" }
+          if ($z -notlike '*0 message(s) would be drafted, 5 blocked*') { throw "Balanced-but-broken braces were not blocked: $z" }
 
       - name: Dry run under Windows PowerShell 5.1
         shell: powershell

@@ -27,12 +27,16 @@ Merge syntax (mirrors the macOS app; see the repo README):
 Filters chain left to right: {{First Name|there|capitalize}}.
 
 A row is blocked (never drafted/sent) when it has an invalid or missing email,
-is missing data for a placeholder that has no fallback, repeats an earlier
-row's address, or names a per-recipient attachment file that doesn't exist.
+is on the do-not-contact list, still shows merge-field braces after merging, is
+missing data for a placeholder that has no fallback, repeats an earlier row's
+address, or names a per-recipient attachment file that doesn't exist.
 Unresolved placeholders are removed from the output - a raw {{...}} never
 reaches a recipient. A malformed one - "{{Company" with no closing braces - is
-not a placeholder at all and so cannot be stripped; the run warns about the
-unbalanced braces up front, including under -DryRun.
+not a placeholder at all and so cannot be stripped, so the merged subject and
+body are scanned for leftover braces and any row still carrying them is
+blocked, whether the braces came from the template or from a CSV value. The run
+also warns about unbalanced braces in the template up front, before anything is
+drafted. Both apply under -DryRun.
 
 .PARAMETER Csv
 Path to the recipients list (.csv). Comma, semicolon, and tab delimiters are
@@ -579,16 +583,84 @@ $script:PlaceholderRegex = [regex]'\{\{\s*([^{}]+?)\s*\}\}'
 # The placeholder regex deliberately refuses to match across a brace, so an
 # unbalanced token like "{{Company" is never seen as a placeholder at all: it
 # is not resolved, not recorded as unresolved, and not stripped - it survives
-# verbatim into the subject or body the recipient reads. Counting the braces is
-# the only thing that catches it. Mirrors PlaceholderCheck.malformedWarning on
-# macOS/iOS, message included, so the three platforms say the same thing.
+# verbatim into the subject or body the recipient reads. Counting the braces
+# catches the common case early, before anything is drafted; the rendered-text
+# scan below is what actually blocks the row. Mirrors
+# PlaceholderCheck.malformedWarning on macOS/iOS, message included, so the three
+# platforms say the same thing.
 function Get-MalformedPlaceholderWarning {
     param([string]$Text)
     if ([string]::IsNullOrEmpty($Text)) { return $null }
     $opens = ([regex]::Matches($Text, '\{\{')).Count
     $closes = ([regex]::Matches($Text, '\}\}')).Count
     if ($opens -eq $closes) { return $null }
-    return 'Unclosed merge field - check your {{ }} braces so every field fills in.'
+    return $script:MalformedPlaceholderMessage
+}
+
+# The one wording used everywhere braces don't line up, so the up-front template
+# warning and the per-row block say the same thing. Matches PlaceholderCheck.message
+# on macOS/iOS, transliterated to ASCII (Windows PowerShell 5.1 requirement).
+$script:MalformedPlaceholderMessage =
+    'Unclosed merge field - check your {{ }} braces so every field fills in.'
+
+# Brace fragments still present in *already merged* text.
+#
+# The count check above is a template-level heuristic and can be fooled: two
+# typos that happen to balance ("{{A }}B{{") slip past it, and it says nothing
+# at all about braces that arrive in a CSV *value* rather than the template.
+# Scanning what actually rendered is the check that cannot be fooled, and it is
+# what lets a row be blocked rather than merely warned about.
+#
+# Returns short quotable snippets (deduplicated, in order) for the blocking
+# reason, and nothing at all when the merged text is clean. A faithful port of
+# PlaceholderCheck.leftoverBraceFragments on macOS/iOS - keep the two in step.
+#
+# The list is returned bare, NOT comma-wrapped: PowerShell unrolls it into zero,
+# one, or many strings, and every call site wraps the call in @(...) to get an
+# array back. Comma-wrapping here would hand each caller a single element - the
+# list object itself - so a clean row would look like it had one fragment and
+# be blocked over an empty quote.
+function Get-LeftoverBraceFragments {
+    param([string]$Text, [int]$Limit = 3)
+
+    $fragments = New-Object System.Collections.Generic.List[string]
+    if ([string]::IsNullOrEmpty($Text)) { return $fragments }
+    if (-not ($Text.Contains('{{') -or $Text.Contains('}}'))) { return $fragments }
+
+    $snippetLength = 24
+    $seen = New-Object System.Collections.Generic.HashSet[string]
+    $characters = $Text.ToCharArray()
+    $index = 0
+
+    while ($index + 1 -lt $characters.Count -and $fragments.Count -lt $Limit) {
+        $pair = [string]$characters[$index] + [string]$characters[$index + 1]
+        if ($pair -cne '{{' -and $pair -cne '}}') {
+            $index++
+            continue
+        }
+        # Quote from the marker up to a line break or the next brace marker,
+        # capped so a whole paragraph never lands in a one-line blocking
+        # reason. Stopping at the next marker keeps each fragment tight and
+        # lets repeats of the same typo collapse together.
+        $end = [Math]::Min($index + $snippetLength, $characters.Count)
+        $snippet = New-Object System.Text.StringBuilder
+        [void]$snippet.Append($pair)
+        $scan = $index + 2
+        while ($scan -lt $end) {
+            $character = $characters[$scan]
+            if ($character -eq "`n" -or $character -eq "`r") { break }
+            if ($scan + 1 -lt $characters.Count) {
+                $ahead = [string]$characters[$scan] + [string]$characters[$scan + 1]
+                if ($ahead -ceq '{{' -or $ahead -ceq '}}') { break }
+            }
+            [void]$snippet.Append($character)
+            $scan++
+        }
+        $trimmed = $snippet.ToString().Trim()
+        if ($trimmed -ne '' -and $seen.Add($trimmed)) { $fragments.Add($trimmed) }
+        $index += 2
+    }
+    return $fragments
 }
 
 # Parses the inner text of one {{ ... }} into a name, an optional fallback
@@ -872,8 +944,10 @@ $templateFullPath = (Convert-Path -LiteralPath $Template)
 
 # A malformed token is a template-level typo, so it would hit every recipient
 # at once. Say so before anything is drafted, and say it on -DryRun too - a dry
-# run is exactly where this is meant to be caught. It warns rather than blocks:
-# the count is a heuristic, and an HTML template with minified CSS can trip it.
+# run is exactly where this is meant to be caught. This up-front notice stays a
+# warning because the count is a heuristic; the per-row scan of the *merged*
+# text below is the hard block, and it is what keeps raw braces out of a
+# recipient's inbox.
 foreach ($part in @(
     @{ Name = 'Subject'; Text = $templateSpec.Subject },
     @{ Name = 'Body'; Text = $templateSpec.Body }
@@ -968,6 +1042,15 @@ foreach ($row in $rows) {
     }
     $missingAttachments = @($attachmentPaths | Where-Object { -not (Test-Path -LiteralPath $_) })
 
+    # Last line of defence for "no raw {{placeholder}} reaches a recipient": the
+    # merge regex only sees well-formed fields, so a malformed one survives
+    # substitution untouched. Scanning what actually rendered catches it -
+    # whether the braces came from a template typo or from a CSV value - and
+    # blocks the row. Subject then body, matching TemplateMergeEngine.merge.
+    $malformed = @()
+    $malformed += @(Get-LeftoverBraceFragments -Text $subject)
+    $malformed += @(Get-LeftoverBraceFragments -Text $body)
+
     $hasValidEmail = Test-EmailAddress $email
     $isDuplicate = $false
     if ($hasValidEmail) { $isDuplicate = -not $seenEmails.Add($email.ToLower()) }
@@ -976,13 +1059,17 @@ foreach ($row in $rows) {
     # Blocking mirrors MergePreview.blockingReason on the Mac, in the same
     # order - suppression sits right after an unusable address, ahead of
     # missing data, so someone who opted out is reported as opted out rather
-    # than as a data problem.
+    # than as a data problem, and a malformed field outranks missing data
+    # because it is a template-level typo rather than a gap in this row.
     $reason = $null
     if (-not $hasValidEmail) {
         if ($email -eq '') { $reason = 'No email address.' }
         else { $reason = "Invalid email address: $email" }
     } elseif ($isSuppressed) {
         $reason = "On your do-not-contact list - $email is skipped."
+    } elseif ($malformed.Count -gt 0) {
+        $quoted = ($malformed | ForEach-Object { '"' + $_ + '"' }) -join ', '
+        $reason = "$script:MalformedPlaceholderMessage Found $quoted."
     } elseif ($unresolved.Count -gt 0) {
         $reason = "Missing data for: $($unresolved -join ', ')"
     } elseif ($missingAttachments.Count -gt 0) {
