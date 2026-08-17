@@ -312,6 +312,11 @@ jobs:
           $clean = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template '.\Windows\Examples\sample-template.txt' -DryRun *>&1 | Out-String -Width 500
           if ($clean -like "*$marker*") { throw "A well-formed template was wrongly flagged: $clean" }
           if ($clean -notlike '*3 message(s) would be drafted, 2 blocked*') { throw "A well-formed template lost recipients to the brace check: $clean" }
+          # Regression guard: the fragment list is unrolled by PowerShell, so a
+          # comma-wrapped return handed the caller the list object itself and
+          # every clean row was blocked over an empty quote - Found "", "".
+          # An empty quote in the output means that has come back.
+          if ($clean -like '*Found ""*') { throw "The brace check reported an empty fragment: $clean" }
 
           # An unclosed brace in the subject. The body deliberately uses {{Name}},
           # a column this CSV really has, so the only thing wrong with these rows

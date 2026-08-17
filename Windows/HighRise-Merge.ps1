@@ -612,14 +612,20 @@ $script:MalformedPlaceholderMessage =
 # what lets a row be blocked rather than merely warned about.
 #
 # Returns short quotable snippets (deduplicated, in order) for the blocking
-# reason, or an empty list when the merged text is clean. A faithful port of
+# reason, and nothing at all when the merged text is clean. A faithful port of
 # PlaceholderCheck.leftoverBraceFragments on macOS/iOS - keep the two in step.
+#
+# The list is returned bare, NOT comma-wrapped: PowerShell unrolls it into zero,
+# one, or many strings, and every call site wraps the call in @(...) to get an
+# array back. Comma-wrapping here would hand each caller a single element - the
+# list object itself - so a clean row would look like it had one fragment and
+# be blocked over an empty quote.
 function Get-LeftoverBraceFragments {
     param([string]$Text, [int]$Limit = 3)
 
     $fragments = New-Object System.Collections.Generic.List[string]
-    if ([string]::IsNullOrEmpty($Text)) { return , $fragments }
-    if (-not ($Text.Contains('{{') -or $Text.Contains('}}'))) { return , $fragments }
+    if ([string]::IsNullOrEmpty($Text)) { return $fragments }
+    if (-not ($Text.Contains('{{') -or $Text.Contains('}}'))) { return $fragments }
 
     $snippetLength = 24
     $seen = New-Object System.Collections.Generic.HashSet[string]
@@ -654,7 +660,7 @@ function Get-LeftoverBraceFragments {
         if ($trimmed -ne '' -and $seen.Add($trimmed)) { $fragments.Add($trimmed) }
         $index += 2
     }
-    return , $fragments
+    return $fragments
 }
 
 # Parses the inner text of one {{ ... }} into a name, an optional fallback
