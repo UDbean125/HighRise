@@ -552,6 +552,26 @@ final class HighRiseCoordinator: ObservableObject {
     /// How many rows are held back because they're on the do-not-contact list.
     var suppressedCount: Int { previews.lazy.filter(\.isSuppressed).count }
 
+    /// CC/BCC addresses the do-not-contact list will strip from this run, across
+    /// every recipient that's actually going out. Distinct and sorted so the
+    /// Send screen can name them; empty when the envelope is clean.
+    ///
+    /// Only sendable previews are considered — a held-back row sends nothing, so
+    /// its envelope would never have reached anyone anyway.
+    var suppressedEnvelopeAddresses: [String] {
+        guard !envelope.isEmpty else { return [] }
+        var seen = Set<String>()
+        var found: [String] = []
+        for preview in previews where preview.isSendable {
+            for address in envelope.suppressedAddresses(for: preview.contact,
+                                                        isSuppressed: { self.doNotContact.isSuppressed($0) })
+            where seen.insert(address.lowercased()).inserted {
+                found.append(address)
+            }
+        }
+        return found.sorted { $0.lowercased() < $1.lowercased() }
+    }
+
     // MARK: - Do-not-contact list
 
     /// Adds an address to the do-not-contact list. Returns false on invalid or
@@ -1177,7 +1197,11 @@ final class HighRiseCoordinator: ObservableObject {
             var consecutiveFailures = 0
             for (index, preview) in queue.enumerated() {
                 if Task.isCancelled { break }
-                let (cc, bcc) = envelope.resolved(for: preview.contact)
+                // The do-not-contact list covers CC/BCC too, not just the To:
+                // address — otherwise a campaign-wide CC would reach someone
+                // who opted out once per recipient in the run.
+                let (cc, bcc) = envelope.resolved(for: preview.contact,
+                                                  isSuppressed: { self.doNotContact.isSuppressed($0) })
                 // Campaign-wide files plus this recipient's own column files.
                 let allAttachments = attachmentPaths + preview.attachmentPaths
                 let message = ComposedMessage(

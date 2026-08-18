@@ -40,13 +40,63 @@ struct SendReadinessTests {
         #expect(r.headline == "You're ready — 3 messages to send · 1 thing worth a look")
     }
 
-    @Test("Only the recipient check is required; content/attachments are advisory")
+    @Test("Only the recipient check is required; the rest are advisory")
     func severityAssignment() {
         let r = SendReadiness.assess(readyCount: 2, contentScore: 100,
                                      missingAttachments: 0, mode: .send)
         let required = r.checks.filter { $0.severity == .required }
         let advisory = r.checks.filter { $0.severity == .advisory }
         #expect(required.count == 1)
-        #expect(advisory.count == 2)
+        #expect(advisory.count == 3)
+    }
+
+    // MARK: - Suppressed CC/BCC
+
+    /// The addresses are dropped before delivery either way, so this can never
+    /// block a send — it only has to be visible.
+    @Test("A suppressed CC/BCC address is an advisory, never a blocker")
+    func suppressedEnvelopeIsAdvisory() {
+        let r = SendReadiness.assess(readyCount: 2, contentScore: 100,
+                                     missingAttachments: 0, mode: .send,
+                                     suppressedEnvelopeAddresses: 1)
+        #expect(r.canSend)
+        #expect(r.failedAdvisory.contains { $0.title.contains("do-not-contact") })
+    }
+
+    @Test("The suppressed CC/BCC check passes and stays quiet when there are none")
+    func noSuppressedEnvelopeAddresses() {
+        let r = SendReadiness.assess(readyCount: 2, contentScore: 100,
+                                     missingAttachments: 0, mode: .send,
+                                     suppressedEnvelopeAddresses: 0)
+        #expect(r.failedAdvisory.isEmpty)
+        #expect(r.checks.contains { $0.title == "CC/BCC clear of your do-not-contact list" })
+    }
+
+    @Test("One suppressed address reads in the singular")
+    func suppressedEnvelopeSingular() {
+        let r = SendReadiness.assess(readyCount: 1, contentScore: 100,
+                                     missingAttachments: 0, mode: .send,
+                                     suppressedEnvelopeAddresses: 1)
+        #expect(r.failedAdvisory.first?.title
+            == "1 CC/BCC address is on your do-not-contact list — it won't be included")
+    }
+
+    @Test("Several suppressed addresses read in the plural")
+    func suppressedEnvelopePlural() {
+        let r = SendReadiness.assess(readyCount: 1, contentScore: 100,
+                                     missingAttachments: 0, mode: .send,
+                                     suppressedEnvelopeAddresses: 2)
+        #expect(r.failedAdvisory.first?.title
+            == "2 CC/BCC addresses are on your do-not-contact list — they won't be included")
+    }
+
+    /// Callers that predate this check keep their old verdict, so the default
+    /// can't quietly add a warning to a clean run.
+    @Test("Omitting the count leaves the report unchanged")
+    func defaultsToNoSuppressedAddresses() {
+        let r = SendReadiness.assess(readyCount: 2, contentScore: 100,
+                                     missingAttachments: 0, mode: .send)
+        #expect(r.failedAdvisory.isEmpty)
+        #expect(r.headline == "You're ready — 2 messages to send")
     }
 }
