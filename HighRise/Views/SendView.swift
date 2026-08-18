@@ -88,7 +88,8 @@ struct SendView: View {
         let noun = coordinator.sendMode == .send ? "ready to send" : "drafts to create"
         let report = SendReadiness.assess(readyCount: ready, contentScore: score,
                                           missingAttachments: coordinator.missingAttachments.count,
-                                          mode: coordinator.sendMode)
+                                          mode: coordinator.sendMode,
+                                          suppressedEnvelopeAddresses: coordinator.suppressedEnvelopeAddresses.count)
 
         return SectionCard("Ready to send?", systemImage: "airplane.departure",
                            subtitle: "A quick pre-flight — nothing leaves your Mac until you confirm.") {

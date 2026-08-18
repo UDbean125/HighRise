@@ -38,6 +38,11 @@ blocked, whether the braces came from the template or from a CSV value. The run
 also warns about unbalanced braces in the template up front, before anything is
 drafted. Both apply under -DryRun.
 
+The do-not-contact list also covers -Cc, -Bcc and -BccSelf, not just the email
+column: a campaign-wide CC would otherwise reach a suppressed person once per
+recipient. Such an address is dropped from the envelope and named in a warning,
+while the row itself still goes out to its To: recipient.
+
 .PARAMETER Csv
 Path to the recipients list (.csv). Comma, semicolon, and tab delimiters are
 auto-detected; UTF-8 (with or without BOM) and UTF-16 are handled.
@@ -59,14 +64,16 @@ CSV delimiter override. Auto-detected when omitted.
 
 .PARAMETER Cc
 CC addresses applied to every message. Comma/semicolon-separated; may contain
-{{Field}} placeholders (e.g. {{Manager Email}}). Invalid addresses are dropped.
+{{Field}} placeholders (e.g. {{Manager Email}}). Invalid addresses are dropped,
+and so is any address on the do-not-contact list - the run warns and names it,
+but the message still goes to the To: recipient.
 
 .PARAMETER Bcc
 BCC addresses applied to every message; same rules as -Cc.
 
 .PARAMETER BccSelf
 One fixed address BCC'd on every message - a privacy-respecting delivery
-record, no tracking pixel.
+record, no tracking pixel. Also checked against the do-not-contact list.
 
 .PARAMETER Attach
 File(s) attached to every message. The run stops if any is missing, and warns
@@ -748,8 +755,32 @@ function Resolve-MergeText {
     return $sb.ToString()
 }
 
+# Every CC/BCC address the do-not-contact list removed during this run, in the
+# order first seen. Mirrors HighRiseCoordinator.suppressedEnvelopeAddresses -
+# the drop is reported rather than silent, because a vanished CC is the script
+# doing something other than what the operator typed on the command line.
+$script:SuppressedEnvelopeAddresses = New-Object System.Collections.Generic.List[string]
+$script:SuppressedEnvelopeSeen = New-Object System.Collections.Generic.HashSet[string]
+
+# Records one address the do-not-contact list removed from an envelope, once per
+# run however many times it appears across -Cc, -Bcc and -BccSelf.
+function Add-SuppressedEnvelopeAddress {
+    param([string]$Address)
+    if ($script:SuppressedEnvelopeSeen.Add($Address.ToLower())) {
+        $script:SuppressedEnvelopeAddresses.Add($Address)
+    }
+}
+
 # Resolves a CC/BCC address list for one contact: merge {{Field}} references,
-# split on commas/semicolons, keep only valid addresses, de-duplicate.
+# split on commas/semicolons, keep only valid addresses, drop any the
+# do-not-contact list covers, de-duplicate.
+#
+# Mirrors CampaignEnvelope.resolve on macOS. The list applies to CC/BCC and not
+# just the To: column: a campaign-wide -Cc "{{Manager Email}}" would otherwise
+# reach a suppressed person once per recipient in the run. Suppressed addresses
+# are dropped from the envelope rather than holding the row back - the To:
+# recipient did nothing wrong, so the mail still goes, minus the address that
+# opted out.
 function Resolve-AddressList {
     param([string]$Raw, [System.Collections.IDictionary]$Fields)
     $result = New-Object System.Collections.Generic.List[string]
@@ -759,6 +790,10 @@ function Resolve-AddressList {
     foreach ($piece in ($merged -split '[,;]')) {
         $address = $piece.Trim()
         if (-not (Test-EmailAddress $address)) { continue }
+        if (Test-Suppressed -List $script:SuppressionList -Email $address) {
+            Add-SuppressedEnvelopeAddress -Address $address
+            continue
+        }
         if ($seen.Add($address.ToLower())) { $result.Add($address) }
     }
     return , $result
@@ -1088,8 +1123,14 @@ foreach ($row in $rows) {
         Bcc             = & {
             $list = Resolve-AddressList -Raw $Bcc -Fields $fields
             $self = $BccSelf.Trim()
-            if ((Test-EmailAddress $self) -and -not ($list | Where-Object { $_.ToLower() -eq $self.ToLower() })) {
-                $list.Add($self)
+            if (Test-EmailAddress $self) {
+                # -BccSelf takes its own path to the list, so it needs the same
+                # do-not-contact check the merged addresses just went through.
+                if (Test-Suppressed -List $script:SuppressionList -Email $self) {
+                    Add-SuppressedEnvelopeAddress -Address $self
+                } elseif (-not ($list | Where-Object { $_.ToLower() -eq $self.ToLower() })) {
+                    $list.Add($self)
+                }
             }
             , $list
         }
@@ -1106,6 +1147,19 @@ Write-Host ''
 
 $sendable = @($previews | Where-Object { $null -eq $_.BlockingReason })
 $blocked = @($previews | Where-Object { $null -ne $_.BlockingReason })
+
+# 5a. Say so when the do-not-contact list stripped a CC/BCC address. Nothing
+#     unsafe can go out either way - the addresses are already gone - but the
+#     operator asked for a CC that is not going to happen, and silently
+#     changing that is its own kind of wrong.
+if ($script:SuppressedEnvelopeAddresses.Count -gt 0) {
+    $addressList = ($script:SuppressedEnvelopeAddresses -join ', ')
+    $noun = 'address is'
+    if ($script:SuppressedEnvelopeAddresses.Count -ne 1) { $noun = 'addresses are' }
+    Write-Host ("WARNING: {0} CC/BCC {1} on your do-not-contact list and will NOT be included: {2}" -f `
+        $script:SuppressedEnvelopeAddresses.Count, $noun, $addressList) -ForegroundColor Yellow
+    Write-Host ''
+}
 
 # 5b. An unfinished journal means the previous attempt died partway through.
 #     Skip whoever it already reached, so a second attempt does not email the

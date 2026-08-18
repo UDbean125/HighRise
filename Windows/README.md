@@ -236,6 +236,10 @@ One Windows-flavored difference: `date:` patterns are .NET format strings
 - `-Cc` / `-Bcc` apply to every message and may contain placeholders:
   `-Cc "{{Manager Email}}"` CCs each row's manager. Invalid addresses are
   dropped silently, never sent to.
+- The do-not-contact list covers `-Cc`, `-Bcc` and `-BccSelf` too, not just the
+  email column — a campaign-wide CC would otherwise reach a suppressed person
+  once per recipient. A suppressed address is dropped from the envelope and
+  named in a warning; the row still goes out to its To: recipient.
 - `-BccSelf you@example.com` BCCs you on every message — a delivery record
   with no tracking pixel.
 - `-Attach report.pdf, terms.pdf` attaches the same file(s) to every message

@@ -44,8 +44,15 @@ enum SendReadiness {
         }
     }
 
+    /// `suppressedEnvelopeAddresses` is how many distinct CC/BCC addresses the
+    /// do-not-contact list will strip from this run. It's advisory, not
+    /// required: the addresses are already being dropped, so nothing unsafe can
+    /// go out either way. The check exists so the drop is visible — a silently
+    /// removed CC is the app quietly doing something other than what the user
+    /// typed.
     static func assess(readyCount: Int, contentScore: Int,
-                       missingAttachments: Int, mode: SendMode) -> Report {
+                       missingAttachments: Int, mode: SendMode,
+                       suppressedEnvelopeAddresses: Int = 0) -> Report {
         let checks = [
             Check(passed: readyCount > 0, severity: .required,
                   title: readyCount > 0 ? "At least one recipient is ready"
@@ -55,7 +62,11 @@ enum SendReadiness {
                                             : "Content check flags some issues"),
             Check(passed: missingAttachments == 0, severity: .advisory,
                   title: missingAttachments == 0 ? "All attachments found"
-                                                 : "\(missingAttachments) attachment\(missingAttachments == 1 ? "" : "s") missing")
+                                                 : "\(missingAttachments) attachment\(missingAttachments == 1 ? "" : "s") missing"),
+            Check(passed: suppressedEnvelopeAddresses == 0, severity: .advisory,
+                  title: suppressedEnvelopeAddresses == 0
+                      ? "CC/BCC clear of your do-not-contact list"
+                      : "\(suppressedEnvelopeAddresses) CC/BCC address\(suppressedEnvelopeAddresses == 1 ? " is" : "es are") on your do-not-contact list — \(suppressedEnvelopeAddresses == 1 ? "it won't" : "they won't") be included")
         ]
         return Report(readyCount: readyCount, mode: mode, checks: checks)
     }

@@ -208,6 +208,63 @@ jobs:
           catch { $failed = $true }
           if (-not $failed) { throw 'A corrupt do-not-contact list did not stop the run' }
 
+      # The list has to cover the envelope too, not just the email column: a
+      # campaign-wide -Cc reaches its address once per recipient, so an
+      # unfiltered one is a bigger breach than a single suppressed To: row.
+      # There is no PowerShell on the maintainer's Mac, so this job is the only
+      # place the Windows behavior is actually executed.
+      - name: Do-not-contact list covers CC/BCC under Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $list = Join-Path $env:RUNNER_TEMP 'dnc-envelope.json'
+          $csv = '.\Examples\sample-recipients.csv'
+          $tpl = '.\Windows\Examples\sample-template.txt'
+          # -Width keeps Out-String from wrapping the warning mid-address.
+          $w = 400
+
+          # The rendered envelope lines only. Checking these instead of the
+          # whole transcript keeps the "did not survive" assertions honest --
+          # the dropped address is quoted in the warning too, so a bare
+          # substring search over everything would always find it.
+          function Get-EnvelopeLines {
+            param([string]$Output, [string]$Prefix)
+            @($Output -split "`r?`n" | Where-Object { $_.TrimStart().StartsWith($Prefix) })
+          }
+
+          & .\Windows\HighRise-DoNotContact.ps1 -Path $list -Add 'boss@acme.com' -Note 'Opted out' *>&1 | Write-Host
+
+          # A suppressed CC is dropped and named, but must not block the row.
+          $cc = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $tpl -DoNotContact $list `
+                    -Cc 'boss@acme.com, ok@acme.com' -DryRun *>&1 | Out-String -Width $w
+          Write-Host $cc
+          if ($cc -notlike '*CC/BCC*') { throw "A suppressed CC was dropped without saying so: $cc" }
+          if ($cc -notlike '*boss@acme.com*') { throw 'The dropped CC address was not named' }
+          if ($cc -notlike '*3 message(s) would be drafted*') { throw "A suppressed CC wrongly blocked rows: $cc" }
+          $ccLines = Get-EnvelopeLines -Output $cc -Prefix 'Cc:'
+          if ($ccLines.Count -eq 0) { throw 'No Cc: line was rendered at all' }
+          if ($ccLines -like '*boss@acme.com*') { throw "A suppressed address survived into the CC line: $ccLines" }
+          if (-not ($ccLines -like '*ok@acme.com*')) { throw "An allowed CC address was dropped too: $ccLines" }
+
+          # Same for BCC and for the -BccSelf delivery record.
+          $bcc = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $tpl -DoNotContact $list `
+                     -Bcc 'boss@acme.com' -DryRun *>&1 | Out-String -Width $w
+          if ($bcc -notlike '*CC/BCC*') { throw "A suppressed BCC was dropped without saying so: $bcc" }
+          $bccLines = Get-EnvelopeLines -Output $bcc -Prefix 'Bcc:'
+          if ($bccLines -like '*boss@acme.com*') { throw "A suppressed address survived into the BCC line: $bccLines" }
+
+          $self = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $tpl -DoNotContact $list `
+                      -BccSelf 'boss@acme.com' -DryRun *>&1 | Out-String -Width $w
+          if ($self -notlike '*CC/BCC*') { throw "A suppressed -BccSelf was dropped without saying so: $self" }
+          $selfLines = Get-EnvelopeLines -Output $self -Prefix 'Bcc:'
+          if ($selfLines -like '*boss@acme.com*') { throw "A suppressed -BccSelf survived into the BCC line: $selfLines" }
+
+          # A clean envelope stays quiet - no warning about nothing.
+          $clean = & .\Windows\HighRise-Merge.ps1 -Csv $csv -Template $tpl -DoNotContact $list `
+                       -Cc 'ok@acme.com' -DryRun *>&1 | Out-String -Width $w
+          if ($clean -like '*CC/BCC*') { throw "A clean envelope warned anyway: $clean" }
+          $cleanLines = Get-EnvelopeLines -Output $clean -Prefix 'Cc:'
+          if (-not ($cleanLines -like '*ok@acme.com*')) { throw "A clean CC did not survive: $cleanLines" }
+
       - name: Interrupted run is not re-sent under Windows PowerShell 5.1
         shell: powershell
         run: |
