@@ -159,6 +159,8 @@ targets:
       # rather than reimplemented so both platforms agree on the file format
       # and on what counts as delivered.
       - path: HighRise/Services/SendRunLog.swift
+      # Two-way hand-off with Hen Contacts (highrise:// in, hencontacts:// out).
+      - path: HighRise/Services/HenContactsBridge.swift
     settings:
       base:
         # Same bundle ID as the macOS `HighRise` target, deliberately — this

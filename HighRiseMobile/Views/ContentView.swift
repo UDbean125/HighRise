@@ -3,10 +3,17 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var coordinator = MobileCoordinator()
     @Environment(\.scenePhase) private var scenePhase
+    /// Set when Hen Contacts (or a shared CSV) hands over a list, so the
+    /// Import screen opens with it.
+    @State private var showIncomingList = false
 
     var body: some View {
         NavigationStack {
             HomeView()
+                .navigationDestination(isPresented: $showIncomingList) { ImportView() }
+        }
+        .onOpenURL { url in
+            if coordinator.handleIncoming(url) { showIncomingList = true }
         }
         // iOS kills backgrounded apps without warning, so the working session
         // is written the moment we leave the foreground — .inactive fires

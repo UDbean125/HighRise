@@ -7,6 +7,7 @@ import MessageUI
 /// move to the next — or skip a recipient without sending.
 struct SendSessionView: View {
     @EnvironmentObject var coordinator: MobileCoordinator
+    @Environment(\.openURL) private var openURL
     @State private var showingComposer = false
     @State private var showingMailUnavailableAlert = false
 
@@ -146,6 +147,14 @@ struct SendSessionView: View {
                 .foregroundStyle(.green)
             Text("Done — \(sent) of \(queue.totalCount) sent")
                 .font(.title3.bold())
+            if sent > 0, coordinator.isHenContactsInstalled, let url = coordinator.henLogURL(for: queue) {
+                Button {
+                    openURL(url)
+                } label: {
+                    Label("Log in Hen Contacts", systemImage: "text.book.closed")
+                }
+                .buttonStyle(.borderedProminent)
+            }
         }
     }
 }

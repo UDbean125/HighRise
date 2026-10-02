@@ -11,6 +11,11 @@ struct HighRiseApp: App {
                 .environmentObject(coordinator)
                 .frame(minWidth: 820, minHeight: 600)
                 .onAppear { appDelegate.coordinator = coordinator }
+                // Lists handed over by Hen Contacts (highrise://import…) or a
+                // CSV opened with HighRise from Finder / another app.
+                .onOpenURL { url in
+                    Task { await coordinator.handleIncoming(url) }
+                }
         }
         .windowResizability(.contentSize)
         .commands {

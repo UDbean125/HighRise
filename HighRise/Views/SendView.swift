@@ -833,6 +833,14 @@ struct SendView: View {
                         Label("Export Results…", systemImage: "square.and.arrow.up")
                     }
                 }
+                if coordinator.canLogToHenContacts && !coordinator.isSending {
+                    Button {
+                        coordinator.logRunToHenContacts()
+                    } label: {
+                        Label("Log in Hen Contacts", systemImage: "text.book.closed")
+                    }
+                    .help("Add each email to the recipient's relationship journal in Hen Contacts")
+                }
             }
             ForEach(coordinator.outcomes) { outcome in
                 HStack {
