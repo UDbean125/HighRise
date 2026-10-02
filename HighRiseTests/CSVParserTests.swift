@@ -9,6 +9,36 @@ struct CSVParserTests {
 
     // MARK: - Robustness (delimiters, BOM, encodings)
 
+    @Test("Windows/Excel CRLF line endings split into records")
+    func crlfLineEndings() throws {
+        // Swift folds "\r\n" into ONE Character, so a parser that only checks
+        // for "\r" or "\n" sees no line breaks at all and returns a single row.
+        let table = try CSVParser.parse("Name,Email\r\nAda,ada@example.com\r\nGrace,grace@example.com\r\n")
+        #expect(table.headers == ["Name", "Email"])
+        #expect(table.rows == [["Ada", "ada@example.com"], ["Grace", "grace@example.com"]])
+    }
+
+    @Test("Classic Mac CR-only line endings split into records")
+    func crOnlyLineEndings() throws {
+        let table = try CSVParser.parse("Name,Email\rAda,ada@example.com\r")
+        #expect(table.rows == [["Ada", "ada@example.com"]])
+    }
+
+    @Test("A CRLF inside a quoted field stays in the field")
+    func crlfInsideQuotes() throws {
+        let table = try CSVParser.parse("Name,Note\r\nAda,\"line one\r\nline two\"\r\n")
+        #expect(table.rows.count == 1)
+        #expect(table.rows[0][1] == "line one\r\nline two")
+    }
+
+    @Test("Delimiter detection reads only the CRLF-terminated header line")
+    func crlfDelimiterDetection() {
+        // The body has more semicolons than the header has commas; only the
+        // header line should count.
+        let text = "Name,Email,Company\r\nAda;x;y;z;w,ada@example.com,A\r\n"
+        #expect(CSVParser.detectDelimiter(in: text) == ",")
+    }
+
     @Test("Semicolon-delimited European CSVs are auto-detected")
     func semicolonDelimiter() throws {
         let table = try CSVParser.parse("Name;Email;City\nAda;ada@x.com;Berlin")

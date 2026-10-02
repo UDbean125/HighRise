@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 /// `ImportPipeline` (the same cleanup/column-detection logic the Mac app uses).
 struct ImportView: View {
     @EnvironmentObject var coordinator: MobileCoordinator
+    @Environment(\.openURL) private var openURL
     @State private var showingImporter = false
     @State private var showEnrichment = false
 
@@ -94,6 +95,15 @@ struct ImportView: View {
                 showingImporter = true
             }
             .buttonStyle(.borderedProminent)
+
+            if coordinator.isHenContactsInstalled, let picker = coordinator.henListPickerURL {
+                Button {
+                    openURL(picker)
+                } label: {
+                    Label("From Hen Contacts", systemImage: "person.2.crop.square.stack")
+                }
+                .buttonStyle(.bordered)
+            }
 
 #if DEBUG
             // Dev/screenshot convenience only — DEBUG builds never ship.

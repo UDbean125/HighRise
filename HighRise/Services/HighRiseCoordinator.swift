@@ -92,6 +92,9 @@ final class HighRiseCoordinator: ObservableObject {
     /// is re-picked after import.
     private var importSourceLabel: String?
 
+    /// Where the current list came from (file name, "Hen Contacts – …", etc.).
+    var currentImportSource: String? { importSourceLabel }
+
     /// The display name for a contact, honoring the user's Name column choice
     /// when one is set (and non-blank for that row) before falling back to
     /// the automatic pick.
@@ -432,8 +435,12 @@ final class HighRiseCoordinator: ObservableObject {
                                    emailColumnOverride: snap.emailColumn)
             }.value
             guard let self else { return }
-            // A fresh import may have superseded the restore mid-flight.
-            guard self.rawTable == table else { return }
+            // A fresh import may have superseded the restore mid-flight
+            // (e.g. a list handed over by Hen Contacts at launch).
+            guard self.rawTable == table else {
+                self.isRestoringSession = false
+                return
+            }
             self.importedHeaders = result.importedHeaders
             self.attachmentColumn = snap.attachmentColumn ?? result.attachmentColumn
             self.isBulkUpdating = true
@@ -690,14 +697,14 @@ final class HighRiseCoordinator: ObservableObject {
     /// Parses CSV text into contacts. Auto-detects the email column unless one
     /// was already chosen. Parsing runs off the main thread — a pasted list
     /// can be tens of thousands of lines.
-    func importCSV(_ text: String) async {
+    func importCSV(_ text: String, sourceLabel: String = "pasted text") async {
         isImporting = true
         defer { isImporting = false }
         do {
             let table = try await Task.detached(priority: .userInitiated) {
                 try CSVParser.parse(text)
             }.value
-            await ingest(table, sourceLabel: "pasted text")
+            await ingest(table, sourceLabel: sourceLabel)
         } catch {
             reportImportFailure(error.localizedDescription)
         }

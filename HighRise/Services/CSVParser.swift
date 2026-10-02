@@ -48,7 +48,9 @@ enum CSVParser {
     /// European CSVs and tab-separated files are detected automatically.
     /// Defaults to comma when there's no clear winner.
     static func detectDelimiter(in text: String) -> Character {
-        let firstLine = stripBOM(text).prefix { $0 != "\n" && $0 != "\r" }
+        // `isNewline` matches CRLF too: Swift treats "\r\n" as one Character,
+        // so comparing against "\n" or "\r" alone never sees it.
+        let firstLine = stripBOM(text).prefix { !$0.isNewline }
         let candidates: [Character] = [",", ";", "\t"]
         var counts: [Character: Int] = [:]
         var inQuotes = false
@@ -112,13 +114,10 @@ enum CSVParser {
                     inQuotes = true
                 } else if c == delimiter {
                     endField()
-                } else if c == "\r" {
-                    // Swallow CR; a following LF is handled as the record break.
-                    if i + 1 < scalars.count && scalars[i + 1] == "\n" {
-                        i += 1
-                    }
-                    endRecord()
-                } else if c == "\n" {
+                } else if c == "\r\n" || c == "\r" || c == "\n" {
+                    // Swift folds CRLF into a single Character ("\r\n"), which
+                    // equals neither "\r" nor "\n" — so all three must be named,
+                    // or every Windows/Excel CSV parses as one giant row.
                     endRecord()
                 } else {
                     field.append(c)
