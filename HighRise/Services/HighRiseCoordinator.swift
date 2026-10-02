@@ -92,7 +92,7 @@ final class HighRiseCoordinator: ObservableObject {
     /// is re-picked after import.
     private var importSourceLabel: String?
 
-    /// Where the current list came from (file name, "Hen Contacts – …", etc.).
+    /// Where the current list came from (file name, "Henbase – …", etc.).
     var currentImportSource: String? { importSourceLabel }
 
     /// The display name for a contact, honoring the user's Name column choice
@@ -436,7 +436,7 @@ final class HighRiseCoordinator: ObservableObject {
             }.value
             guard let self else { return }
             // A fresh import may have superseded the restore mid-flight
-            // (e.g. a list handed over by Hen Contacts at launch).
+            // (e.g. a list handed over by Henbase at launch).
             guard self.rawTable == table else {
                 self.isRestoringSession = false
                 return

@@ -146,27 +146,27 @@ same template syntax, filters, and send-blocking rules. Draft-first by
 default, `-DryRun` to preview without touching Outlook. Setup, examples, and
 troubleshooting live in [`Windows/README.md`](Windows/README.md).
 
-## Working with Hen Contacts
+## Working with Henbase
 
-HighRise and Hen Contacts (the Hen Solutions relationship CRM) hand lists back and
+HighRise and Henbase (the Hen Solutions relationship CRM) hand lists back and
 forth on the same device. Nothing goes over the network.
 
-- **Hen → HighRise.** In Hen Contacts, choose **Mail Merge in HighRise** on any list,
+- **Hen → HighRise.** In Henbase, choose **Mail Merge in HighRise** on any list,
   tag, Smart List, account or deal's buying committee. HighRise opens on **Contacts**
   with the list loaded and every Hen field available as a merge field
   (`{{Next Step}}`, `{{Buying Role}}`, `{{Days Since Contact}}`, custom fields…).
   People marked "Do not email" in Hen are never included.
-- **From inside HighRise.** **Contacts › Hen Contacts** (Mac) or **Import › From Hen
-  Contacts** (iOS) opens Hen's list picker, which sends the chosen list back.
-- **HighRise → Hen.** After a run, **Log in Hen Contacts** adds one email to each
+- **From inside HighRise.** **Contacts › Henbase** (Mac) or **Import › From Henbase**
+  (iOS) opens Henbase's list picker, which sends the chosen list back.
+- **HighRise → Hen.** After a run, **Log in Henbase** adds one email to each
   recipient's journal in Hen, so relationship strength and keep-in-touch timers update.
   Re-sending the same results never logs twice.
 - **Any CSV.** HighRise is also offered under **Open With** / the share sheet for CSV
   and TSV files.
 
 Under the hood: `highrise://import?source=…&csv=<base64url>` (or `&from=pasteboard`
-for very large lists) in, `hencontacts://highrise/log?payload=<base64url JSON>` out.
-See `HighRise/Services/HenContactsBridge.swift`.
+for very large lists) in, `henbase://highrise/log?payload=<base64url JSON>` out.
+See `HighRise/Services/HenbaseBridge.swift`.
 
 ## Using it on iOS
 

@@ -96,11 +96,11 @@ struct ImportView: View {
             }
             .buttonStyle(.borderedProminent)
 
-            if coordinator.isHenContactsInstalled, let picker = coordinator.henListPickerURL {
+            if coordinator.isHenbaseInstalled, let picker = coordinator.henListPickerURL {
                 Button {
                     openURL(picker)
                 } label: {
-                    Label("From Hen Contacts", systemImage: "person.2.crop.square.stack")
+                    Label("From Henbase", systemImage: "person.2.crop.square.stack")
                 }
                 .buttonStyle(.bordered)
             }

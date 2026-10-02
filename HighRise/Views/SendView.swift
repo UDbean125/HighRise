@@ -833,13 +833,13 @@ struct SendView: View {
                         Label("Export Results…", systemImage: "square.and.arrow.up")
                     }
                 }
-                if coordinator.canLogToHenContacts && !coordinator.isSending {
+                if coordinator.canLogToHenbase && !coordinator.isSending {
                     Button {
-                        coordinator.logRunToHenContacts()
+                        coordinator.logRunToHenbase()
                     } label: {
-                        Label("Log in Hen Contacts", systemImage: "text.book.closed")
+                        Label("Log in Henbase", systemImage: "text.book.closed")
                     }
-                    .help("Add each email to the recipient's relationship journal in Hen Contacts")
+                    .help("Add each email to the recipient's relationship journal in Henbase")
                 }
             }
             ForEach(coordinator.outcomes) { outcome in

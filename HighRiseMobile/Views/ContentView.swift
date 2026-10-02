@@ -3,7 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var coordinator = MobileCoordinator()
     @Environment(\.scenePhase) private var scenePhase
-    /// Set when Hen Contacts (or a shared CSV) hands over a list, so the
+    /// Set when Henbase (or a shared CSV) hands over a list, so the
     /// Import screen opens with it.
     @State private var showIncomingList = false
 

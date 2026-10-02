@@ -388,13 +388,13 @@ struct ContactsImportView: View {
             } label: {
                 Label("Apple Contacts", systemImage: "person.crop.circle")
             }
-            if coordinator.isHenContactsInstalled {
+            if coordinator.isHenbaseInstalled {
                 Button {
-                    coordinator.requestListFromHenContacts()
+                    coordinator.requestListFromHenbase()
                 } label: {
-                    Label("Hen Contacts", systemImage: "person.2.crop.square.stack")
+                    Label("Henbase", systemImage: "person.2.crop.square.stack")
                 }
-                .help("Pick a tag, Smart List, company or deal's buying committee in Hen Contacts and send it here")
+                .help("Pick a tag, Smart List, company or deal's buying committee in Henbase and send it here")
             }
 #if !MAS_BUILD
             Button {
