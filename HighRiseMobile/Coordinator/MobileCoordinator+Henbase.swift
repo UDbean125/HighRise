@@ -1,6 +1,6 @@
 import UIKit
 
-/// iOS side of the Hen Contacts hand-off. See `HenContactsBridge`.
+/// iOS side of the Henbase hand-off. See `HenbaseBridge`.
 extension MobileCoordinator {
 
     /// Imports a list from a `highrise://import…` link or an opened CSV file.
@@ -18,7 +18,7 @@ extension MobileCoordinator {
             return importError == nil
         }
         do {
-            guard let inbound = try HenContactsBridge.inboundImport(from: url, pasteboardText: {
+            guard let inbound = try HenbaseBridge.inboundImport(from: url, pasteboardText: {
                 UIPasteboard.general.string
             }) else { return false }
             importCSV(data: Data(inbound.csvText.utf8), sourceLabel: inbound.sourceLabel)
@@ -33,23 +33,23 @@ extension MobileCoordinator {
         }
     }
 
-    /// Whether Hen Contacts is installed (needs `hencontacts` in LSApplicationQueriesSchemes).
-    var isHenContactsInstalled: Bool {
-        guard let probe = URL(string: "\(HenContactsBridge.henScheme)://") else { return false }
+    /// Whether Henbase is installed (needs `henbase` in LSApplicationQueriesSchemes).
+    var isHenbaseInstalled: Bool {
+        guard let probe = URL(string: "\(HenbaseBridge.henScheme)://") else { return false }
         return UIApplication.shared.canOpenURL(probe)
     }
 
-    /// Hen Contacts' list picker, which sends the chosen list back here.
-    var henListPickerURL: URL? { URL(string: "\(HenContactsBridge.henScheme)://highrise/export") }
+    /// Henbase's list picker, which sends the chosen list back here.
+    var henListPickerURL: URL? { URL(string: "\(HenbaseBridge.henScheme)://highrise/export") }
 
-    /// A `hencontacts://highrise/log…` link journaling this session's outcomes.
+    /// A `henbase://highrise/log…` link journaling this session's outcomes.
     func henLogURL(for queue: SendQueue) -> URL? {
-        let campaign = HenContactsBridge.campaign(
+        let campaign = HenbaseBridge.campaign(
             subject: template.subject,
             mode: "send",
             sourceLabel: nil,
             outcomes: queue.outcomes.map { ($0.contact.email, $0.contact.displayName,
-                                            HenContactsBridge.statusString($0.status)) })
-        return HenContactsBridge.logURL(for: campaign)
+                                            HenbaseBridge.statusString($0.status)) })
+        return HenbaseBridge.logURL(for: campaign)
     }
 }

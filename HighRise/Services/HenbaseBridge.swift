@@ -1,9 +1,9 @@
 import Foundation
 
-/// Two-way hand-off with Hen Contacts (`com.hensolutions.contacts`), the Hen
+/// Two-way hand-off with Henbase (`com.hensolutions.contacts`), the Hen
 /// Solutions relationship CRM.
 ///
-/// - **Inbound** — Hen Contacts opens `highrise://import?source=…&csv=…`
+/// - **Inbound** — Henbase opens `highrise://import?source=…&csv=…`
 ///   (base64url-encoded UTF-8 CSV) or, for very large lists,
 ///   `highrise://import?source=…&from=pasteboard` after placing the CSV on the
 ///   pasteboard. It can also hand HighRise a `.csv` file (HighRise declares
@@ -11,18 +11,18 @@ import Foundation
 ///   the normal `CSVParser` → import pipeline, so cleanup, email-column
 ///   detection, do-not-contact and merge behave exactly as for any import.
 /// - **Outbound** — after a run, HighRise opens
-///   `hencontacts://highrise/log?payload=…` with a base64url JSON `Campaign`
-///   so Hen Contacts can journal one "email" interaction per recipient.
+///   `henbase://highrise/log?payload=…` with a base64url JSON `Campaign`
+///   so Henbase can journal one "email" interaction per recipient.
 ///
 /// Foundation-only and shared by the macOS and iOS targets. Nothing here
 /// touches the network: data moves between the two apps on the device only.
-enum HenContactsBridge {
+enum HenbaseBridge {
     static let highRiseScheme = "highrise"
-    static let henScheme = "hencontacts"
+    static let henScheme = "henbase"
     static let henBundleIdentifier = "com.hensolutions.contacts"
-    static let defaultSourceLabel = "Hen Contacts"
+    static let defaultSourceLabel = "Henbase"
 
-    /// A recipient list handed over by Hen Contacts.
+    /// A recipient list handed over by Henbase.
     struct InboundImport: Equatable {
         let csvText: String
         let sourceLabel: String
@@ -37,9 +37,9 @@ enum HenContactsBridge {
         var errorDescription: String? {
             switch self {
             case .missingPayload:
-                return "Hen Contacts didn't include a recipient list. Try “Mail Merge in HighRise” again."
+                return "Henbase didn't include a recipient list. Try “Mail Merge in HighRise” again."
             case .unreadablePayload:
-                return "The recipient list from Hen Contacts couldn't be read. Try again, or share the list as a CSV file instead."
+                return "The recipient list from Henbase couldn't be read. Try again, or share the list as a CSV file instead."
             }
         }
     }
@@ -47,7 +47,7 @@ enum HenContactsBridge {
     /// Parses a `highrise://import…` link. Returns nil for any URL that isn't
     /// an import link (callers then fall through to their other handling).
     /// `pasteboardText` is only consulted for `from=pasteboard` links, so the
-    /// pasteboard is never read unless Hen Contacts asked for it.
+    /// pasteboard is never read unless Henbase asked for it.
     static func inboundImport(from url: URL, pasteboardText: () -> String?) throws -> InboundImport? {
         guard url.scheme?.lowercased() == highRiseScheme, url.host?.lowercased() == "import" else { return nil }
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
@@ -71,7 +71,7 @@ enum HenContactsBridge {
         return InboundImport(csvText: text, sourceLabel: source, subjectHint: subject)
     }
 
-    /// True when the list came from Hen Contacts, so the results screen can
+    /// True when the list came from Henbase, so the results screen can
     /// offer to journal the emails back there.
     static func isHenSource(_ label: String?) -> Bool {
         guard let label else { return false }
@@ -80,7 +80,7 @@ enum HenContactsBridge {
 
     // MARK: - Outbound
 
-    /// One mail-merge run, as Hen Contacts records it.
+    /// One mail-merge run, as Henbase records it.
     struct Campaign: Codable, Equatable {
         struct Recipient: Codable, Equatable {
             let email: String
@@ -118,7 +118,7 @@ enum HenContactsBridge {
         }
     }
 
-    /// `hencontacts://highrise/log?payload=…` for a campaign.
+    /// `henbase://highrise/log?payload=…` for a campaign.
     static func logURL(for campaign: Campaign) -> URL? {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601

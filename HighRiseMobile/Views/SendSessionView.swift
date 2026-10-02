@@ -147,11 +147,11 @@ struct SendSessionView: View {
                 .foregroundStyle(.green)
             Text("Done — \(sent) of \(queue.totalCount) sent")
                 .font(.title3.bold())
-            if sent > 0, coordinator.isHenContactsInstalled, let url = coordinator.henLogURL(for: queue) {
+            if sent > 0, coordinator.isHenbaseInstalled, let url = coordinator.henLogURL(for: queue) {
                 Button {
                     openURL(url)
                 } label: {
-                    Label("Log in Hen Contacts", systemImage: "text.book.closed")
+                    Label("Log in Henbase", systemImage: "text.book.closed")
                 }
                 .buttonStyle(.borderedProminent)
             }
