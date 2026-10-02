@@ -23,15 +23,18 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    # 1.2: everything merged since the 1.1 gallery release — iOS session
-    # persistence, the iOS saved-template library, the do-not-contact list on
-    # iOS and Windows, and double-send protection.
+    # 1.3: the Henbase integration (send a list from Henbase, log each sent
+    # email back to its journal), the CRLF CSV parsing fix, and the restore-
+    # guard fix. 1.2 (approved) covered iOS session persistence, the iOS
+    # saved-template library, the do-not-contact list on iOS and Windows, and
+    # double-send protection. Cloud build 131 still said 1.2 and bounced.
     #
     # RULE: once Apple APPROVES a version, that train CLOSES. Any later upload
     # still carrying that version bounces with ITMS-90062 + ITMS-90186. This
-    # has now happened twice — 1.0.1 (Cloud build 81) and 1.1 (build 110) —
+    # has now happened three times — 1.0.1 (Cloud build 81), 1.1 (build 110)
+    # and 1.2 (build 131) —
     # so bump this BEFORE the next Cloud build, not after the rejection email.
-    MARKETING_VERSION: "1.2"
+    MARKETING_VERSION: "1.3"
     # Apple already has Builds 42, 46, 49, and 51 for version 1.0 on the App
     # Store Connect record — all unsandboxed ITMS-90296 rejections. 42/46/49
     # were the plain `HighRise` scheme; 51 came from the STALE external-drive
