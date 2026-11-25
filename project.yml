@@ -164,6 +164,10 @@ targets:
       - path: HighRise/Services/SendRunLog.swift
       # Two-way hand-off with Henbase (highrise:// in, henbase:// out).
       - path: HighRise/Services/HenbaseBridge.swift
+      # Privacy manifest: shared with the macOS targets, which pick it up
+      # from the HighRise folder.
+      - path: HighRise/PrivacyInfo.xcprivacy
+        buildPhase: resources
     settings:
       base:
         # Same bundle ID as the macOS `HighRise` target, deliberately — this
